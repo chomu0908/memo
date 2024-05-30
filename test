@@ -338,3 +338,83 @@ export class MenuComponent {
   }
 }
 
+
+
+
+
+
+
+
+
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { map, tap, distinctUntilChanged } from 'rxjs/operators';
+import { AppState } from './app-state.interface';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class MenuService {
+  private initialState: AppState = {
+    menu: '',
+    header: '',
+    subMenu: '',
+    userName: 'Guest'
+  };
+
+  private stateSource = new BehaviorSubject<AppState>(this.initialState);
+  state$ = this.stateSource.asObservable();
+
+  constructor() {
+    this.state$
+      .pipe(
+        map(state => this.getHeaderFromMenu(state.menu)),
+        distinctUntilChanged(),
+        tap(header => this.setState({ header })) // 修正: ラムダ式を使用
+      )
+      .subscribe();
+
+    this.state$
+      .pipe(
+        map(state => this.getSubMenuFromMenu(state.menu)),
+        distinctUntilChanged(),
+        tap(subMenu => this.setState({ subMenu })) // 修正: ラムダ式を使用
+      )
+      .subscribe();
+  }
+
+  changeMenu(menu: string) {
+    this.setState({ menu });
+  }
+
+  changeUserName(userName: string) {
+    this.setState({ userName });
+  }
+
+  private setState = (newState: Partial<AppState>) => { // setStateをアロー関数に変更
+    const currentState = this.stateSource.value;
+    this.stateSource.next({ ...currentState, ...newState });
+  }
+
+  private getHeaderFromMenu(menu: string): string {
+    switch (menu) {
+      case 'menu1':
+        return 'Menu 1 - Home';
+      case 'menu2':
+        return 'Menu 2 - Settings';
+      default:
+        return 'Default Header';
+    }
+  }
+
+  private getSubMenuFromMenu(menu: string): string {
+    switch (menu) {
+      case 'menu1':
+        return 'Sub Menu 1';
+      case 'menu2':
+        return 'Sub Menu 2';
+      default:
+        return '';
+    }
+  }
+}
