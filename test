@@ -1,1 +1,110 @@
 
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { map, tap } from 'rxjs/operators';
+import { AppState } from './app-state.interface';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class MenuService {
+  private initialState: AppState = {
+    menu: '',
+    header: ''
+    // 他の初期値もここに追加
+  };
+
+  private stateSource = new BehaviorSubject<AppState>(this.initialState);
+  state$ = this.stateSource.asObservable();
+
+  constructor() {
+    this.state$
+      .pipe(
+        tap(state => this.stateSource.next(state)), // 状態を更新
+        map(state => this.getHeaderFromMenu(state.menu)) // ヘッダー文字列を取得
+      )
+      .subscribe(header => this.setState({ header }));
+  }
+
+  changeMenu(menu: string) {
+    this.setState({ menu });
+  }
+
+  private setState(newState: Partial<AppState>) {
+    const currentState = this.stateSource.value;
+    this.stateSource.next({ ...currentState, ...newState });
+  }
+
+  private getHeaderFromMenu(menu: string): string {
+    switch (menu) {
+      case 'menu1':
+        return 'Menu 1 - Home';
+      case 'menu2':
+        return 'Menu 2 - Settings';
+      // 追加のケースはここに追加
+      default:
+        return 'Default Header';
+    }
+  }
+}
+
+
+
+
+受け取り側
+import { Component, OnInit } from '@angular/core';
+import { MenuService } from './menu.service';
+import { Observable } from 'rxjs';
+import { AppState } from './app-state.interface';
+
+@Component({
+  selector: 'app-header',
+  template: `
+    <h1>{{ state$ | async | json }}</h1>
+  `
+})
+export class HeaderComponent implements OnInit {
+  state$: Observable<AppState>;
+
+  constructor(private menuService: MenuService) {}
+
+  ngOnInit() {
+    this.state$ = this.menuService.state$;
+  }
+}
+
+html
+<h1>{{ (state$ | async)?.header }}</h1>
+
+
+import { Component, OnInit } from '@angular/core';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { MenuService } from './menu.service';
+import { AppState } from './app-state.interface';
+
+@Component({
+  selector: 'app-header',
+  template: `
+    <h1>{{ header$ | async }}</h1>
+    <p>Current Menu: {{ menu$ | async }}</p>
+  `
+})
+export class HeaderComponent implements OnInit {
+  header$: Observable<string>;
+  menu$: Observable<string>;
+
+  constructor(private menuService: MenuService) {}
+
+  ngOnInit() {
+    this.header$ = this.menuService.state$.pipe(
+      map(state => state.header)
+    );
+    this.menu$ = this.menuService.state$.pipe(
+      map(state => state.menu)
+    );
+  }
+}
+
+
+
