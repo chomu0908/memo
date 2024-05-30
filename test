@@ -418,3 +418,45 @@ export class MenuService {
     }
   }
 }
+
+
+
+
+
+
+
+import { Component, OnInit } from '@angular/core';
+import { MenuService } from './menu.service';
+import { Subscription } from 'rxjs';
+
+@Component({
+  selector: 'app-my-component',
+  templateUrl: './my-component.component.html',
+  styleUrls: ['./my-component.component.css']
+})
+export class MyComponent implements OnInit {
+  menu: string;
+  header: string;
+  subMenu: string;
+  userName: string;
+  private subscriptions: Subscription[] = [];
+
+  constructor(private menuService: MenuService) {}
+
+  ngOnInit(): void {
+    this.subscriptions.push(
+      this.menuService.state$.subscribe(state => {
+        this.menu = state.menu;
+        this.header = state.header;
+        this.subMenu = state.subMenu;
+        this.userName = state.userName;
+      })
+    );
+  }
+
+  ngOnDestroy(): void {
+    // メモリリークを防ぐために購読を解除
+    this.subscriptions.forEach(sub => sub.unsubscribe());
+  }
+}
+
