@@ -51,6 +51,89 @@ export class MenuService {
 
 
 
+
+
+
+なおし
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { map, tap, distinctUntilChanged } from 'rxjs/operators';
+import { AppState } from './app-state.interface';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class MenuService {
+  private initialState: AppState = {
+    menu: '',
+    header: '',
+    subMenu: '',
+    userName: 'Guest'
+  };
+
+  private stateSource = new BehaviorSubject<AppState>(this.initialState);
+  state$ = this.stateSource.asObservable();
+
+  constructor() {
+    this.state$
+      .pipe(
+        map(state => this.getHeaderFromMenu(state.menu)),
+        distinctUntilChanged(),
+        tap(header => this.setState({ header }))
+      )
+      .subscribe();
+
+    this.state$
+      .pipe(
+        map(state => this.getSubMenuFromMenu(state.menu)),
+        distinctUntilChanged(),
+        tap(subMenu => this.setState({ subMenu }))
+      )
+      .subscribe();
+  }
+
+  changeMenu(menu: string) {
+    this.setState({ menu });
+  }
+
+  changeUserName(userName: string) {
+    this.setState({ userName });
+  }
+
+  private setState(newState: Partial<AppState>) {
+    const currentState = this.stateSource.value;
+    this.stateSource.next({ ...currentState, ...newState });
+  }
+
+  private getHeaderFromMenu(menu: string): string {
+    switch (menu) {
+      case 'menu1':
+        return 'Menu 1 - Home';
+      case 'menu2':
+        return 'Menu 2 - Settings';
+      default:
+        return 'Default Header';
+    }
+  }
+
+  private getSubMenuFromMenu(menu: string): string {
+    switch (menu) {
+      case 'menu1':
+        return 'Sub Menu 1';
+      case 'menu2':
+        return 'Sub Menu 2';
+      default:
+        return '';
+    }
+  }
+}
+
+
+
+
+
+
+
 受け取り側
 import { Component, OnInit } from '@angular/core';
 import { MenuService } from './menu.service';
@@ -107,4 +190,151 @@ export class HeaderComponent implements OnInit {
 }
 
 
+
+
+
+
+
+
+
+
+
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { map, tap, distinctUntilChanged } from 'rxjs/operators';
+import { AppState } from './app-state.interface';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class MenuService {
+  private initialState: AppState = {
+    menu: '',
+    header: '',
+    subMenu: '',
+    userName: 'Guest'
+  };
+
+  private stateSource = new BehaviorSubject<AppState>(this.initialState);
+  state$ = this.stateSource.asObservable();
+
+  constructor() {
+    this.state$
+      .pipe(
+        map(state => this.getHeaderFromMenu(state.menu)),
+        distinctUntilChanged(),
+        tap(header => this.setState({ header }))
+      )
+      .subscribe();
+
+    this.state$
+      .pipe(
+        map(state => this.getSubMenuFromMenu(state.menu)),
+        distinctUntilChanged(),
+        tap(subMenu => this.setState({ subMenu }))
+      )
+      .subscribe();
+  }
+
+  changeMenu(menu: string) {
+    this.setState({ menu });
+  }
+
+  changeUserName(userName: string) {
+    this.setState({ userName });
+  }
+
+  private setState(newState: Partial<AppState>) {
+    const currentState = this.stateSource.value;
+    this.stateSource.next({ ...currentState, ...newState });
+  }
+
+  private getHeaderFromMenu(menu: string): string {
+    switch (menu) {
+      case 'menu1':
+        return 'Menu 1 - Home';
+      case 'menu2':
+        return 'Menu 2 - Settings';
+      default:
+        return 'Default Header';
+    }
+  }
+
+  private getSubMenuFromMenu(menu: string): string {
+    switch (menu) {
+      case 'menu1':
+        return 'Sub Menu 1';
+      case 'menu2':
+        return 'Sub Menu 2';
+      default:
+        return '';
+    }
+  }
+}
+
+import { Component, OnInit } from '@angular/core';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { MenuService } from './menu.service';
+import { AppState } from './app-state.interface';
+
+@Component({
+  selector: 'app-header',
+  template: `
+    <h1>{{ header$ | async }}</h1>
+    <p>Current Menu: {{ menu$ | async }}</p>
+    <p>Sub Menu: {{ subMenu$ | async }}</p>
+    <p>User Name: {{ userName$ | async }}</p>
+  `
+})
+export class HeaderComponent implements OnInit {
+  header$: Observable<string>;
+  menu$: Observable<string>;
+  subMenu$: Observable<string>;
+  userName$: Observable<string>;
+
+  constructor(private menuService: MenuService) {}
+
+  ngOnInit() {
+    this.header$ = this.menuService.state$.pipe(
+      map(state => state.header)
+    );
+    this.menu$ = this.menuService.state$.pipe(
+      map(state => state.menu)
+    );
+    this.subMenu$ = this.menuService.state$.pipe(
+      map(state => state.subMenu)
+    );
+    this.userName$ = this.menuService.state$.pipe(
+      map(state => state.userName)
+    );
+  }
+}
+
+
+
+
+
+import { Component } from '@angular/core';
+import { MenuService } from './menu.service';
+
+@Component({
+  selector: 'app-menu',
+  template: `
+    <button (click)="changeMenu('menu1')">Menu 1</button>
+    <button (click)="changeMenu('menu2')">Menu 2</button>
+    <button (click)="changeUserName('John Doe')">Change User Name</button>
+  `
+})
+export class MenuComponent {
+  constructor(private menuService: MenuService) {}
+
+  changeMenu(menu: string) {
+    this.menuService.changeMenu(menu);
+  }
+
+  changeUserName(userName: string) {
+    this.menuService.changeUserName(userName);
+  }
+}
 
