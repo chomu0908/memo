@@ -1,0 +1,184 @@
+. データサービスの作成 (data.service.ts)
+インデックスを利用してユーザーを管理します。
+
+typescript
+コードをコピーする
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+
+export interface User {
+  name: string;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class DataService {
+  private usersSource = new BehaviorSubject<User[]>([
+    { name: '太郎' },
+    { name: '次郎' },
+    { name: '三郎' },
+  ]);
+
+  users$ = this.usersSource.asObservable();
+
+  private getUsers(): User[] {
+    return this.usersSource.getValue();
+  }
+
+  updateUser(index: number, updatedUser: User): void {
+    const users = this.getUsers();
+    users[index] = updatedUser;
+    this.usersSource.next(users);
+  }
+
+  addUser(newUser: User): void {
+    const users = this.getUsers();
+    users.push(newUser);
+    this.usersSource.next(users);
+  }
+}
+2. コンポーネントの更新 (app.component.ts)
+データサービスを利用してデータの追加および更新を行います。
+
+typescript
+コードをコピーする
+import { Component, OnInit } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
+import { NameDialogComponent } from './name-dialog/name-dialog.component';
+import { DataService, User } from './data.service';
+import { Observable } from 'rxjs';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent implements OnInit {
+  displayedColumns: string[] = ['name', 'actions'];
+  dataSource$: Observable<User[]>;
+
+  constructor(public dialog: MatDialog, private dataService: DataService) {
+    this.dataSource$ = this.dataService.users$;
+  }
+
+  ngOnInit(): void {}
+
+  openDialog(index: number, user: User): void {
+    const dialogRef = this.dialog.open(NameDialogComponent, {
+      width: '250px',
+      data: { name: user.name, isEdit: true }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.dataService.updateUser(index, { name: result.name });
+      }
+    });
+  }
+
+  openAddDialog(): void {
+    const dialogRef = this.dialog.open(NameDialogComponent, {
+      width: '250px',
+      data: { name: '', isEdit: false }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        const newUser: User = { name: result.name };
+        this.dataService.addUser(newUser);
+      }
+    });
+  }
+}
+3. テンプレートの更新 (app.component.html)
+ユーザーの追加および編集を行うためのボタンを提供します。
+
+html
+コードをコピーする
+<div>
+  <h1>ユーザーリスト</h1>
+  <button mat-button (click)="openAddDialog()">ユーザーを追加</button>
+  <table mat-table [dataSource]="dataSource$ | async" class="mat-elevation-z8">
+
+    <!-- 名前列 -->
+    <ng-container matColumnDef="name">
+      <th mat-header-cell *matHeaderCellDef>名前</th>
+      <td mat-cell *matCellDef="let element">{{element.name}}</td>
+    </ng-container>
+
+    <!-- アクション列 -->
+    <ng-container matColumnDef="actions">
+      <th mat-header-cell *matHeaderCellDef>アクション</th>
+      <td mat-cell *matCellDef="let element; let i = index">
+        <button mat-button (click)="openDialog(i, element)">編集</button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+  </table>
+</div>
+4. ダイアログコンポーネントの更新 (name-dialog.component.ts)
+データのフラグを利用して、ダイアログのボタンを動的に変更します。
+
+typescript
+コードをコピーする
+import { Component, Inject } from '@angular/core';
+import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+
+@Component({
+  selector: 'app-name-dialog',
+  templateUrl: './name-dialog.component.html',
+})
+export class NameDialogComponent {
+  form: FormGroup;
+  actionButtonText: string;
+
+  constructor(
+    public dialogRef: MatDialogRef<NameDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: { name: string, isEdit: boolean },
+    private fb: FormBuilder
+  ) {
+    this.form = this.fb.group({
+      name: [data.name, Validators.required]
+    });
+
+    this.actionButtonText = data.isEdit ? '編集完了' : '追加完了';
+  }
+
+  onNoClick(): void {
+    this.dialogRef.close();
+  }
+
+  onSaveClick(): void {
+    if (this.form.valid) {
+      this.dialogRef.close(this.form.value);
+    }
+  }
+}
+5. ダイアログテンプレートの更新 (name-dialog.component.html)
+ボタンのテキストを動的に変更します。
+
+html
+コードをコピーする
+<h1 mat-dialog-title>名前を入力してください</h1>
+<div mat-dialog-content>
+  <form [formGroup]="form">
+    <mat-form-field>
+      <mat-label>名前</mat-label>
+      <input matInput formControlName="name">
+    </mat-form-field>
+  </form>
+</div>
+<div mat-dialog-actions>
+  <button mat-button (click)="onNoClick()">キャンセル</button>
+  <button mat-button (click)="onSaveClick()">{{ actionButtonText }}</button>
+</div>
+実装のポイント
+インデックスの使用: 配列のインデックスを利用して各ユーザーを識別します。
+データサービスの管理: DataService を使用してデータを一元管理し、更新を配信します。
+ダイアログのフラグ: ダイアログの開く際に、追加と編集の区別をつけるフラグを渡します。
+動的なボタンテキスト: ダイアログ内のボタンテキストを操作に応じて動的に変更します。
+このアプローチでは、配列のインデックスを利用してユーザーの編集および追加を実装しています。配列のインデックスはリストの順序が変わると変わるため、その点を考慮する必要があります。
