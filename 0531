@@ -1,0 +1,181 @@
+1. app.module.ts
+typescript
+コードをコピーする
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { AppComponent } from './app.component';
+import { NameDialogComponent } from './name-dialog/name-dialog.component';
+import { MatTableModule } from '@angular/material/table';
+import { MatButtonModule } from '@angular/material/button';
+import { MatDialogModule } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { ReactiveFormsModule } from '@angular/forms';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    NameDialogComponent
+  ],
+  imports: [
+    BrowserModule,
+    BrowserAnimationsModule,
+    MatTableModule,
+    MatButtonModule,
+    MatDialogModule,
+    MatFormFieldModule,
+    MatInputModule,
+    ReactiveFormsModule
+  ],
+  providers: [],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+2. app.component.ts
+typescript
+コードをコピーする
+import { Component } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
+import { NameDialogComponent } from './name-dialog/name-dialog.component';
+
+export interface User {
+  id: number;
+  name: string;
+}
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css']
+})
+export class AppComponent {
+  displayedColumns: string[] = ['id', 'name', 'actions'];
+  dataSource: User[] = [
+    { id: 1, name: '太郎' },
+    { id: 2, name: '次郎' },
+    { id: 3, name: '三郎' },
+  ];
+
+  constructor(public dialog: MatDialog) {}
+
+  openDialog(user: User): void {
+    const dialogRef = this.dialog.open(NameDialogComponent, {
+      width: '250px',
+      data: { name: user.name }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        user.name = result.name;
+      }
+    });
+  }
+
+  openAddDialog(): void {
+    const dialogRef = this.dialog.open(NameDialogComponent, {
+      width: '250px',
+      data: { name: '' }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        const newId = this.dataSource.length > 0 ? Math.max(...this.dataSource.map(user => user.id)) + 1 : 1;
+        const newUser: User = { id: newId, name: result.name };
+        this.dataSource.push(newUser);
+        // データソースの更新を検知させるためにコピーを作成
+        this.dataSource = [...this.dataSource];
+      }
+    });
+  }
+}
+3. app.component.html
+html
+コードをコピーする
+<div>
+  <h1>ユーザーリスト</h1>
+  <button mat-button (click)="openAddDialog()">ユーザーを追加</button>
+  <table mat-table [dataSource]="dataSource" class="mat-elevation-z8">
+
+    <!-- ID列 -->
+    <ng-container matColumnDef="id">
+      <th mat-header-cell *matHeaderCellDef>ID</th>
+      <td mat-cell *matCellDef="let element">{{element.id}}</td>
+    </ng-container>
+
+    <!-- 名前列 -->
+    <ng-container matColumnDef="name">
+      <th mat-header-cell *matHeaderCellDef>名前</th>
+      <td mat-cell *matCellDef="let element">{{element.name}}</td>
+    </ng-container>
+
+    <!-- アクション列 -->
+    <ng-container matColumnDef="actions">
+      <th mat-header-cell *matHeaderCellDef>アクション</th>
+      <td mat-cell *matCellDef="let element">
+        <button mat-button (click)="openDialog(element)">編集</button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+  </table>
+</div>
+4. name-dialog.component.ts
+typescript
+コードをコピーする
+import { Component, Inject } from '@angular/core';
+import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+
+@Component({
+  selector: 'app-name-dialog',
+  templateUrl: './name-dialog.component.html',
+})
+export class NameDialogComponent {
+  form: FormGroup;
+
+  constructor(
+    public dialogRef: MatDialogRef<NameDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: { name: string },
+    private fb: FormBuilder
+  ) {
+    this.form = this.fb.group({
+      name: [data.name, Validators.required]
+    });
+  }
+
+  onNoClick(): void {
+    this.dialogRef.close();
+  }
+
+  onSaveClick(): void {
+    if (this.form.valid) {
+      this.dialogRef.close(this.form.value);
+    }
+  }
+}
+5. name-dialog.component.html
+html
+コードをコピーする
+<h1 mat-dialog-title>名前を入力してください</h1>
+<div mat-dialog-content>
+  <form [formGroup]="form">
+    <mat-form-field>
+      <mat-label>名前</mat-label>
+      <input matInput formControlName="name">
+    </mat-form-field>
+  </form>
+</div>
+<div mat-dialog-actions>
+  <button mat-button (click)="onNoClick()">キャンセル</button>
+  <button mat-button (click)="onSaveClick()">保存</button>
+</div>
+これで、ユーザーを追加および編集する機能を持つ完全なAngularアプリケーションが完成しました。テーブルには既存のユーザーが表示され、各ユーザー行に編集ボタンがあり、新しいユーザーを追加するボタンもあります。
+
+
+
+
+
+
+
