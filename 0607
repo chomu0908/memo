@@ -73,3 +73,59 @@ export class YourComponent implements OnInit {
   }
 }
 これで、名前からIDを取得するgetIdFromName関数と、IDから名前を取得するgetNameFromId関数が使用できます。
+
+
+
+
+
+
+
+
+
+
+
+
+
+import { Component, OnInit } from '@angular/core';
+import { CodecService } from './codec.service';
+
+@Component({
+  selector: 'app-your-component',
+  templateUrl: './your-component.component.html',
+  styleUrls: ['./your-component.component.css']
+})
+export class YourComponent implements OnInit {
+
+  displayedColumns: string[] = ['id', 'name', 'idFromName', 'nameFromId'];
+  dataSource: any[] = []; // データソース
+
+  constructor(private codecService: CodecService) { }
+
+  ngOnInit(): void {
+    // オブジェクト型のデータ
+    const obj = {
+      '01': 'Sample 1',
+      '02': 'Sample 2',
+      '03': 'Sample 3'
+    };
+
+    // MatTableに表示するためにデータを加工
+    this.dataSource = Object.keys(obj).map(id => ({ id, name: obj[id] }));
+  }
+
+  // 名前からIDを取得する関数
+  getIdFromName(name: string): string | undefined {
+    return this.codecService.getIdFromName(name, this.dataSource.reduce((acc, cur) => {
+      acc[cur.id] = cur.name;
+      return acc;
+    }, {}));
+  }
+
+  // IDから名前を取得する関数
+  getNameFromId(id: string): string | undefined {
+    return this.codecService.getNameFromId(id, this.dataSource.reduce((acc, cur) => {
+      acc[cur.id] = cur.name;
+      return acc;
+    }, {}));
+  }
+}
