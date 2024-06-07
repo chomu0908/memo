@@ -1,0 +1,75 @@
+理解しました。それぞれIDから名前を求める関数と、名前からIDを求める関数の2つを作成します。以下が修正されたコードです。
+
+typescript
+コードをコピーする
+import { Injectable } from '@angular/core';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class CodecService {
+
+  constructor() { }
+
+  encodeObject(obj: { [id: string]: string }): string {
+    return btoa(JSON.stringify(obj));
+  }
+
+  decodeObject(encodedString: string): { [id: string]: string } {
+    return JSON.parse(atob(encodedString));
+  }
+
+  getNameFromId(id: string, obj: { [id: string]: string }): string | undefined {
+    return obj[id];
+  }
+
+  getIdFromName(name: string, obj: { [id: string]: string }): string | undefined {
+    const id = Object.keys(obj).find(key => obj[key] === name);
+    return id;
+  }
+}
+この修正されたサービスでは、"getIdFromName"関数が追加されました。この関数は名前を受け取り、それに対応するIDをオブジェクトから探し、見つかればそのIDを返します。見つからなければundefinedを返します。
+
+
+
+
+
+使い方は？
+ChatGPT
+修正されたサービスを使用する方法を示します。
+
+サービスをコンポーネントでインポートします。
+typescript
+コードをコピーする
+import { Component, OnInit } from '@angular/core';
+import { CodecService } from './codec.service';
+
+@Component({
+  selector: 'app-your-component',
+  templateUrl: './your-component.component.html',
+  styleUrls: ['./your-component.component.css']
+})
+export class YourComponent implements OnInit {
+
+  constructor(private codecService: CodecService) { }
+
+  ngOnInit(): void {
+    // オブジェクト型のデータ
+    const obj = {
+      '01': 'Sample 1',
+      '02': 'Sample 2',
+      '03': 'Sample 3'
+    };
+
+    // 名前からIDを取得
+    const name = 'Sample 2';
+    const idFromName = this.codecService.getIdFromName(name, obj);
+    console.log('ID for Name ' + name + ': ' + idFromName);
+
+    // IDから名前を取得
+    const id = '02';
+    const nameFromId = this.codecService.getNameFromId(id, obj);
+    console.log('Name for ID ' + id + ': ' + nameFromId);
+  }
+}
+これで、名前からIDを取得するgetIdFromName関数と、IDから名前を取得するgetNameFromId関数が使用できます。
