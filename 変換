@@ -1,0 +1,16 @@
+interface File {
+  fileName: string;
+}
+
+function convertToFiles(fileNames: string[]): File[] {
+  return fileNames.map(fileName => ({ fileName }));
+}
+
+// 関数aからの返り値
+const stringArray: string[] = ["file1.txt", "file2.txt", "file3.txt"];
+
+// 関数bの引数に変換
+const files: File[] = convertToFiles(stringArray);
+
+// 関数bを実行
+functionB(files);
