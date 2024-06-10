@@ -1,0 +1,160 @@
+1. インターフェースの定義
+まず、ファイル情報のインターフェースを定義します。
+
+typescript
+コードをコピーする
+// file.model.ts
+export interface FileData {
+  fileName: string;
+}
+2. データサービスの更新
+次に、データサービスを更新して、このインターフェースを使用するようにします。
+
+typescript
+コードをコピーする
+// file.service.ts
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { FileData } from './file.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class FileService {
+  private filesSubject = new BehaviorSubject<FileData[]>([]);
+  files$ = this.filesSubject.asObservable();
+
+  addFiles(files: FileData[]) {
+    this.filesSubject.next(files);
+  }
+}
+3. ファイル選択ダイアログコンポーネントの更新
+ファイル選択ダイアログコンポーネントでは、選択されたファイルをFileDataインターフェースの形式に変換して渡します。
+
+typescript
+コードをコピーする
+// file-dialog.component.ts
+import { Component } from '@angular/core';
+import { MatDialogRef } from '@angular/material/dialog';
+import { FileData } from '../file.model';
+
+@Component({
+  selector: 'app-file-dialog',
+  template: `
+    <h1 mat-dialog-title>Select Files</h1>
+    <div mat-dialog-content>
+      <input type="file" (change)="onFileSelected($event)" multiple />
+    </div>
+    <div mat-dialog-actions>
+      <button mat-button (click)="onCancel()">Cancel</button>
+      <button mat-button (click)="onConfirm()">Confirm</button>
+    </div>
+  `
+})
+export class FileDialogComponent {
+  selectedFiles: FileData[] = [];
+
+  constructor(public dialogRef: MatDialogRef<FileDialogComponent>) {}
+
+  onFileSelected(event: any) {
+    const files: File[] = Array.from(event.target.files);
+    this.selectedFiles = files.map(file => ({ fileName: file.name }));
+  }
+
+  onCancel(): void {
+    this.dialogRef.close();
+  }
+
+  onConfirm(): void {
+    this.dialogRef.close(this.selectedFiles);
+  }
+}
+4. 親コンポーネントの更新
+親コンポーネントでは、ダイアログから返されたファイルデータをサービスに渡します。
+
+typescript
+コードをコピーする
+// parent.component.ts
+import { Component, OnInit } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
+import { FileService } from '../file.service';
+import { FileDialogComponent } from '../file-dialog/file-dialog.component';
+import { FileData } from '../file.model';
+
+@Component({
+  selector: 'app-parent',
+  template: `
+    <button mat-button (click)="openFileDialog()">Select Files</button>
+    <table>
+      <tr>
+        <th>File Name</th>
+      </tr>
+      <tr *ngFor="let file of files">
+        <td>{{ file.fileName }}</td>
+      </tr>
+    </table>
+  `
+})
+export class ParentComponent implements OnInit {
+  files: FileData[] = [];
+
+  constructor(private fileService: FileService, private dialog: MatDialog) {}
+
+  ngOnInit() {
+    this.fileService.files$.subscribe(files => {
+      this.files = files;
+    });
+  }
+
+  openFileDialog(): void {
+    const dialogRef = this.dialog.open(FileDialogComponent);
+
+    dialogRef.afterClosed().subscribe((result: FileData[]) => {
+      if (result) {
+        this.fileService.addFiles(result);
+      }
+    });
+  }
+}
+5. モジュールの設定
+必要なモジュールとコンポーネントをインポートし、設定します。
+
+typescript
+コードをコピーする
+// app.module.ts
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { MatDialogModule } from '@angular/material/dialog';
+import { MatButtonModule } from '@angular/material/button';
+import { AppComponent } from './app.component';
+import { FileDialogComponent } from './file-dialog/file-dialog.component';
+import { ParentComponent } from './parent/parent.component';
+import { FileService } from './file.service';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    FileDialogComponent,
+    ParentComponent
+  ],
+  imports: [
+    BrowserModule,
+    BrowserAnimationsModule,
+    MatDialogModule,
+    MatButtonModule
+  ],
+  providers: [FileService],
+  bootstrap: [AppComponent],
+  entryComponents: [FileDialogComponent]
+})
+export class AppModule { }
+この実装により、ファイル選択ダイアログから選択されたファイルが親コンポーネントに渡され、ファイル名をサービスで管理することができます。ファイル名はFileDataインターフェースに従って管理されます。
+
+
+
+
+
+
+
+
