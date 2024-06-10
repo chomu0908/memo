@@ -1,0 +1,264 @@
+1. データサービス (data.service.ts)
+データを管理するサービス。
+
+typescript
+コードをコピーする
+import { Injectable } from '@angular/core';
+
+@Injectable({
+  providedIn: 'root',
+})
+export class DataService {
+  constructor() {}
+
+  getFirstTableColumns() {
+    return [
+      { key: 'name', header: 'Name' },
+      { key: 'age', header: 'Age' },
+      { key: 'email', header: 'Email' },
+    ];
+  }
+
+  getFirstTableData() {
+    return [
+      { name: 'Alice', age: 25, email: 'alice@example.com' },
+      { name: 'Bob', age: 30, email: 'bob@example.com' },
+    ];
+  }
+
+  getSecondTableColumns() {
+    return [
+      { key: 'product', header: 'Product' },
+      { key: 'price', header: 'Price' },
+      { key: 'quantity', header: 'Quantity' },
+    ];
+  }
+
+  getSecondTableData() {
+    return [
+      { product: 'Laptop', price: 1000, quantity: 10 },
+      { product: 'Mouse', price: 20, quantity: 50 },
+    ];
+  }
+
+  getThirdTableColumns() {
+    return [
+      { key: 'title', header: 'Title' },
+      { key: 'author', header: 'Author' },
+      { key: 'year', header: 'Year' },
+    ];
+  }
+
+  getThirdTableData() {
+    return [
+      { title: 'Book A', author: 'Author A', year: 1990 },
+      { title: 'Book B', author: 'Author B', year: 2000 },
+    ];
+  }
+}
+2. 親コンポーネント (app.component.ts)
+データサービスからデータを取得し、テーブルに渡すコンポーネント。
+
+typescript
+コードをコピーする
+import { Component, OnInit } from '@angular/core';
+import { DataService } from './data.service';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css'],
+})
+export class AppComponent implements OnInit {
+  firstTableColumns: { key: string; header: string }[] = [];
+  firstTableData: any[] = [];
+
+  secondTableColumns: { key: string; header: string }[] = [];
+  secondTableData: any[] = [];
+
+  thirdTableColumns: { key: string; header: string }[] = [];
+  thirdTableData: any[] = [];
+
+  constructor(private dataService: DataService) {}
+
+  ngOnInit() {
+    this.firstTableColumns = this.dataService.getFirstTableColumns();
+    this.firstTableData = this.dataService.getFirstTableData();
+
+    this.secondTableColumns = this.dataService.getSecondTableColumns();
+    this.secondTableData = this.dataService.getSecondTableData();
+
+    this.thirdTableColumns = this.dataService.getThirdTableColumns();
+    this.thirdTableData = this.dataService.getThirdTableData();
+  }
+}
+3. 親コンポーネントのテンプレート (app.component.html)
+各テーブルに共通コンポーネントを使用します。
+
+html
+コードをコピーする
+<app-shared-table title="First Table" [columns]="firstTableColumns" [dataSource]="firstTableData"></app-shared-table>
+<app-shared-table title="Second Table" [columns]="secondTableColumns" [dataSource]="secondTableData" [deletable]="true"></app-shared-table>
+<app-shared-table title="Third Table" [columns]="thirdTableColumns" [dataSource]="thirdTableData"></app-shared-table>
+4. 共通テーブルコンポーネント (shared-table.component.ts)
+共通のテーブルコンポーネント。ここにデータ追加のロジックを含めます。
+
+typescript
+コードをコピーする
+import { Component, Input } from '@angular/core';
+
+@Component({
+  selector: 'app-shared-table',
+  templateUrl: './shared-table.component.html',
+  styleUrls: ['./shared-table.component.css']
+})
+export class SharedTableComponent {
+  @Input() title: string = '';
+  @Input() columns: { key: string, header: string }[] = [];
+  @Input() dataSource: any[] = [];
+  @Input() deletable: boolean = false;
+
+  newData: any = {};
+
+  addData() {
+    if (this.isDataValid()) {
+      this.dataSource.push({ ...this.newData });
+      this.resetNewData();
+    }
+  }
+
+  isDataValid() {
+    return this.columns.every(col => this.newData[col.key]);
+  }
+
+  resetNewData() {
+    this.newData = {};
+  }
+
+  deleteRow(index: number) {
+    this.dataSource.splice(index, 1);
+  }
+
+  getDisplayedColumns() {
+    const keys = this.columns.map(c => c.key);
+    if (this.deletable) {
+      keys.push('delete');
+    }
+    return keys;
+  }
+}
+5. 共通テーブルコンポーネントのテンプレート (shared-table.component.html)
+HTMLテンプレートにデータ追加フォームと追加ボタンを含めます。
+
+html
+コードをコピーする
+<div>
+  <h2>{{title}}</h2>
+  <form (ngSubmit)="addData()">
+    <ng-container *ngFor="let column of columns">
+      <mat-form-field>
+        <input matInput [placeholder]="column.header" [(ngModel)]="newData[column.key]" [name]="column.key" required>
+      </mat-form-field>
+    </ng-container>
+    <button mat-raised-button type="submit">Add</button>
+  </form>
+</div>
+
+<div>
+  <h2>{{title}} Data Table</h2>
+  <table mat-table [dataSource]="dataSource" class="mat-elevation-z8">
+    <ng-container *ngFor="let column of columns" [matColumnDef]="column.key">
+      <th mat-header-cell *matHeaderCellDef> {{column.header}} </th>
+      <td mat-cell *matCellDef="let element"> {{element[column.key]}} </td>
+    </ng-container>
+
+    <!-- 削除ボタン列 -->
+    <ng-container matColumnDef="delete" *ngIf="deletable">
+      <th mat-header-cell *matHeaderCellDef> Delete </th>
+      <td mat-cell *matCellDef="let element; let i = index">
+        <button mat-button (click)="deleteRow(i)">Delete</button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="getDisplayedColumns()"></tr>
+    <tr mat-row *matRowDef="let row; columns: getDisplayedColumns();"></tr>
+  </table>
+</div>
+6. モジュールのインポート (app.module.ts)
+必要なAngular MaterialモジュールとFormsModuleをインポートします。
+
+typescript
+コードをコピーする
+import { NgModule } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { MatTableModule } from '@angular/material/table';
+import { MatInputModule } from '@angular/material/input';
+import { MatButtonModule } from '@angular/material/button';
+import { FormsModule } from '@angular/forms';
+
+import { AppComponent } from './app.component';
+import { SharedTableComponent } from './shared-table/shared-table.component';
+import { DataService } from './data.service';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    SharedTableComponent
+  ],
+  imports: [
+    BrowserModule,
+    BrowserAnimationsModule,
+    MatTableModule,
+    MatInputModule,
+    MatButtonModule,
+    FormsModule
+  ],
+  providers: [DataService],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+まとめ
+この実装により、各テーブルに対してデータ追加のためのフォームと追加ボタンを提供し、データを動的に追加できるようになります。削除ボタンは、特定のテーブルに対して有効にすることができます。これにより、柔軟かつ再利用可能なテーブルコンポーネントが実現します。
+
+
+
+
+
+追加ボタンはどこの部分で作成していますか？
+ChatGPT
+追加ボタンは共通テーブルコンポーネント (shared-table.component.html) のフォーム内に作成されています。具体的には、以下の部分になります：
+
+html
+コードをコピーする
+<form (ngSubmit)="addData()">
+  <!-- 各列の入力欄 -->
+  <ng-container *ngFor="let column of columns">
+    <mat-form-field>
+      <input matInput [placeholder]="column.header" [(ngModel)]="newData[column.key]" [name]="column.key" required>
+    </mat-form-field>
+  </ng-container>
+  <!-- 追加ボタン -->
+  <button mat-raised-button type="submit">Add</button>
+</form>
+フォーム全体が ngSubmit イベントで addData() メソッドを呼び出します。そして、フォーム内にある "Add" ボタンは、フォームの送信をトリガーします。
+
+
+
+
+
+使い方は？
+ChatGPT
+このアプリの使い方はとてもシンプルです。アプリを起動した後、各テーブルで次の操作を行うことができます：
+
+データの表示: 各テーブルはそれぞれ異なるデータを表示します。
+データの追加: 各テーブルの上部にあるフォームに、新しいデータを入力します。その後、フォーム内の "Add" ボタンをクリックしてデータを追加します。
+データの削除: deletable プロパティが true のテーブルには削除ボタンが表示されます。削除したい行の削除ボタンをクリックすると、その行が削除されます。
+以上が、このアプリの基本的な使い方です。データの追加や削除は、即座にテーブルに反映されます。
+
+
+
+
+
+
+
