@@ -1,0 +1,238 @@
+理解しました。より汎用的にデータを扱えるように、コンポーネントとサービスを調整して、さまざまなデータ構造に対応できるようにします。
+
+1. データサービスの拡張 (data.service.ts)
+データ操作を汎用的に行えるように、以下のようにメソッドを追加します。
+
+typescript
+コードをコピーする
+import { Injectable } from '@angular/core';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class DataService {
+  private dataStore: any = {};
+
+  constructor() { }
+
+  // 初期化
+  initializeDataStore(key: string, initialData: any[]) {
+    this.dataStore[key] = initialData;
+  }
+
+  // データ取得
+  getData(key: string) {
+    return this.dataStore[key];
+  }
+
+  // データ追加
+  addData(key: string, newData: any) {
+    if (this.dataStore[key]) {
+      this.dataStore[key].push(newData);
+    }
+  }
+
+  // データ削除
+  deleteData(key: string, id: number) {
+    if (this.dataStore[key]) {
+      this.dataStore[key] = this.dataStore[key].filter((item) => item.id !== id);
+    }
+  }
+
+  // データ更新
+  updateData(key: string, id: number, newData: any) {
+    if (this.dataStore[key]) {
+      const index = this.dataStore[key].findIndex((item) => item.id === id);
+      if (index !== -1) {
+        this.dataStore[key][index] = newData;
+      }
+    }
+  }
+
+  // ネストされたデータ追加
+  addNestedData(key: string, parentId: number, nestedData: any) {
+    if (this.dataStore[key]) {
+      const parentItem = this.dataStore[key].find((item) => item.id === parentId);
+      if (parentItem) {
+        if (!parentItem.details) {
+          parentItem.details = [];
+        }
+        parentItem.details.push(nestedData);
+      }
+    }
+  }
+
+  // ネストされたデータ削除
+  deleteNestedData(key: string, parentId: number, nestedIndex: number) {
+    if (this.dataStore[key]) {
+      const parentItem = this.dataStore[key].find((item) => item.id === parentId);
+      if (parentItem && parentItem.details && parentItem.details.length > nestedIndex) {
+        parentItem.details.splice(nestedIndex, 1);
+      }
+    }
+  }
+
+  // ネストされたデータ更新
+  updateNestedData(key: string, parentId: number, nestedIndex: number, updatedData: any) {
+    if (this.dataStore[key]) {
+      const parentItem = this.dataStore[key].find((item) => item.id === parentId);
+      if (parentItem && parentItem.details && parentItem.details.length > nestedIndex) {
+        parentItem.details[nestedIndex] = updatedData;
+      }
+    }
+  }
+}
+2. コンポーネントの調整 (data-form.component.ts)
+汎用的なデータ操作を行うために、コンポーネントも対応するように修正します。
+
+typescript
+コードをコピーする
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { MatTableDataSource } from '@angular/material/table';
+import { DataService } from '../data.service';
+
+@Component({
+  selector: 'app-data-form',
+  templateUrl: './data-form.component.html',
+  styleUrls: ['./data-form.component.css']
+})
+export class DataFormComponent implements OnInit {
+  dataSource: MatTableDataSource<any>;
+  detailsForm: FormGroup;
+  selectedItemId: number;
+
+  constructor(private dataService: DataService, private fb: FormBuilder) {
+    this.detailsForm = this.fb.group({
+      description: ['', Validators.required],
+      value: ['', Validators.required]
+    });
+  }
+
+  ngOnInit(): void {
+    const key = 'exampleData';
+    const flatDataSource = this.dataService.getData(key);
+    this.dataSource = new MatTableDataSource(flatDataSource);
+  }
+
+  // 親データ選択
+  selectItem(itemId: number) {
+    this.selectedItemId = itemId;
+  }
+
+  // 親データ追加
+  addData() {
+    if (this.detailsForm.valid) {
+      const newData = {
+        id: Date.now(), // 一時的なユニークIDを生成
+        name: this.detailsForm.value.description,
+        details: [] // 必要に応じて詳細データを初期化
+      };
+      this.dataService.addData('exampleData', newData);
+      // データソースを更新して変更を反映
+      this.dataSource.data = this.dataService.getData('exampleData');
+      this.detailsForm.reset();
+    }
+  }
+
+  // 親データ削除
+  deleteData(id: number) {
+    this.dataService.deleteData('exampleData', id);
+    // データソースを更新して変更を反映
+    this.dataSource.data = this.dataService.getData('exampleData');
+    this.selectedItemId = null; // 選択されたアイテムをリセット
+  }
+
+  // 親データ更新
+  updateData(id: number) {
+    // 更新処理を実装する必要があれば追加
+  }
+
+  // ネストされたデータ追加
+  addDetail() {
+    if (this.detailsForm.valid && this.selectedItemId) {
+      const newDetail = {
+        description: this.detailsForm.value.description,
+        value: this.detailsForm.value.value
+      };
+      this.dataService.addNestedData('exampleData', this.selectedItemId, newDetail);
+      // データソースを更新して変更を反映
+      this.dataSource.data = this.dataService.getData('exampleData');
+      this.detailsForm.reset();
+    }
+  }
+
+  // ネストされたデータ削除
+  deleteDetail(detailIndex: number) {
+    if (this.selectedItemId !== null && this.selectedItemId !== undefined) {
+      this.dataService.deleteNestedData('exampleData', this.selectedItemId, detailIndex);
+      // データソースを更新して変更を反映
+      this.dataSource.data = this.dataService.getData('exampleData');
+    }
+  }
+
+  // ネストされたデータ更新
+  updateDetail(detailIndex: number, updatedDetail: any) {
+    if (this.selectedItemId !== null && this.selectedItemId !== undefined) {
+      this.dataService.updateNestedData('exampleData', this.selectedItemId, detailIndex, updatedDetail);
+      // データソースを更新して変更を反映
+      this.dataSource.data = this.dataService.getData('exampleData');
+    }
+  }
+}
+3. テンプレート (data-form.component.html)
+マットテーブルとデータ操作用のフォームを設定します。
+
+html
+コードをコピーする
+<!-- データ追加フォーム -->
+<form [formGroup]="detailsForm" (ngSubmit)="addData()">
+  <mat-form-field>
+    <input matInput formControlName="description" placeholder="Description" required>
+  </mat-form-field>
+  <mat-form-field>
+    <input matInput formControlName="value" placeholder="Value" required>
+  </mat-form-field>
+  <button mat-raised-button color="primary" type="submit" [disabled]="detailsForm.invalid">Add Data</button>
+</form>
+
+<!-- マットテーブル -->
+<mat-table [dataSource]="dataSource">
+  <!-- カラム定義 -->
+  <ng-container matColumnDef="id">
+    <mat-header-cell *matHeaderCellDef>ID</mat-header-cell>
+    <mat-cell *matCellDef="let row">{{ row.id }}</mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="name">
+    <mat-header-cell *matHeaderCellDef>Name</mat-header-cell>
+    <mat-cell *matCellDef="let row">{{ row.name }}</mat-cell>
+  </ng-container>
+
+  <ng-container matColumnDef="actions">
+    <mat-header-cell *matHeaderCellDef>Actions</mat-header-cell>
+    <mat-cell *matCellDef="let row">
+      <button mat-icon-button color="primary" (click)="selectItem(row.id)">
+        <mat-icon>add</mat-icon>
+      </button>
+      <button mat-icon-button color="warn" (click)="deleteData(row.id)">
+        <mat-icon>delete</mat-icon>
+      </button>
+    </mat-cell>
+  </ng-container>
+
+  <!-- 行定義 -->
+  <mat-header-row *matHeaderRowDef="['id', 'name', 'actions']"></mat-header-row>
+  <mat-row *matRowDef="let row; columns: ['id', 'name', 'actions'];"></mat-row>
+</mat-table>
+
+<!-- ネストされたデータ操作フォーム -->
+<div *ngIf="selectedItemId !== null && selectedItemId !== undefined
+
+
+
+
+
+
+
+
