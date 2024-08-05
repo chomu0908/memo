@@ -1,0 +1,83 @@
+承知しました。parentFormGroupを不要にし、optionControlのフォームコントロールネームを引数として取得するように修正したコードを以下に示します。
+
+HTML Template
+html
+コードをコピーする
+<form [formGroup]="myForm">
+  <label for="options">Options</label>
+  <select formControlName="option" id="options">
+    <option *ngFor="let opt of options" [value]="opt">{{ opt }}</option>
+  </select>
+
+  <label for="otherInput">Other</label>
+  <input type="text" formControlName="other" id="otherInput" appEnableOnOther="option" />
+</form>
+Component
+typescript
+コードをコピーする
+import { Component } from '@angular/core';
+import { FormBuilder, FormGroup } from '@angular/forms';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html'
+})
+export class AppComponent {
+  myForm: FormGroup;
+  options = ['Option 1', 'Option 2', 'Other'];
+
+  constructor(private fb: FormBuilder) {
+    this.myForm = this.fb.group({
+      option: [''],
+      other: [{ value: '', disabled: true }]
+    });
+  }
+}
+Directive
+typescript
+コードをコピーする
+import { Directive, Input, OnInit } from '@angular/core';
+import { FormGroup, FormBuilder } from '@angular/forms';
+import { NgControl, FormGroupDirective } from '@angular/forms';
+
+@Directive({
+  selector: '[appEnableOnOther]'
+})
+export class EnableOnOtherDirective implements OnInit {
+  @Input('appEnableOnOther') optionControlName!: string;
+
+  constructor(private ngControl: NgControl, private formGroupDirective: FormGroupDirective) {}
+
+  ngOnInit() {
+    const parentFormGroup = this.formGroupDirective.form;
+    const optionControl = parentFormGroup.get(this.optionControlName);
+    const otherControl = this.ngControl.control;
+
+    optionControl?.valueChanges.subscribe(value => {
+      if (value === 'Other') {
+        otherControl?.enable();
+      } else {
+        otherControl?.reset();
+        otherControl?.disable();
+      }
+    });
+
+    // 初期状態の設定
+    if (optionControl?.value !== 'Other') {
+      otherControl?.disable();
+    }
+  }
+}
+この修正では、appEnableOnOtherディレクティブの引数としてoptionControlNameを受け取り、対応するフォームコントロールの名前を指定することができます。また、FormGroupDirectiveを使用して親のフォームグループを取得しています。これにより、parentFormGroupを渡す必要がなくなります。
+
+
+
+
+
+
+今のところ、この会話は役に立ちましたか？
+
+
+
+
+
