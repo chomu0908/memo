@@ -365,3 +365,54 @@ export class EnableOnOtherDirective implements OnInit {
     }
   }
 }
+
+
+
+
+import { Directive, Input, OnInit, Renderer2, ElementRef } from '@angular/core';
+import { FormGroupDirective, NgControl } from '@angular/forms';
+import { MatSelect } from '@angular/material/select';
+
+@Directive({
+  selector: '[appEnableOnOther]'
+})
+export class EnableOnOtherDirective implements OnInit {
+  @Input('appEnableOnOther') optionControlName!: string;
+
+  constructor(
+    private ngControl: NgControl,
+    private formGroupDirective: FormGroupDirective,
+    private renderer: Renderer2,
+    private el: ElementRef
+  ) {}
+
+  ngOnInit() {
+    const parentFormGroup = this.formGroupDirective.form;
+    const optionControl = parentFormGroup.get(this.optionControlName);
+    const otherControl = this.ngControl.control;
+
+    const selectElement = this.el.nativeElement.closest('form').querySelector('mat-select') as MatSelect;
+
+    optionControl?.valueChanges.subscribe(() => {
+      const selectedOptionText = selectElement.options.find(opt => opt.value === optionControl.value)?.viewValue;
+
+      if (selectedOptionText === 'その他') {
+        otherControl?.reset();
+        otherControl?.enable();
+        this.renderer.setStyle(this.el.nativeElement, 'color', 'initial');
+      } else {
+        otherControl?.setValue(optionControl?.value);
+        otherControl?.disable();
+        this.renderer.setStyle(this.el.nativeElement, 'color', 'transparent');
+      }
+    });
+
+    // 初期状態の設定
+    const initialSelectedOptionText = selectElement.options.find(opt => opt.value === optionControl?.value)?.viewValue;
+    if (initialSelectedOptionText !== 'その他') {
+      otherControl?.setValue(optionControl?.value);
+      otherControl?.disable();
+      this.renderer.setStyle(this.el.nativeElement, 'color', 'transparent');
+    }
+  }
+}
