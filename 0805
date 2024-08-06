@@ -472,3 +472,68 @@ export class EnableOnOtherDirective implements OnInit {
     }
   }
 }
+
+
+
+
+
+
+
+import { Directive, Input, OnInit, Renderer2, ElementRef } from '@angular/core';
+import { FormGroupDirective, NgControl } from '@angular/forms';
+
+@Directive({
+  selector: '[appEnableOnOther]'
+})
+export class EnableOnOtherDirective implements OnInit {
+  @Input('appEnableOnOther') optionControlName!: string;
+
+  constructor(
+    private ngControl: NgControl,
+    private formGroupDirective: FormGroupDirective,
+    private renderer: Renderer2,
+    private el: ElementRef
+  ) {}
+
+  ngOnInit() {
+    const parentFormGroup = this.formGroupDirective.form;
+    const optionControl = parentFormGroup.get(this.optionControlName);
+    const otherControl = this.ngControl.control;
+
+    // Helper function to find the corresponding mat-select by form control name
+    const findMatSelect = (): HTMLMatSelectElement | null => {
+      const formField = this.el.nativeElement.closest('mat-form-field');
+      const selectElement = formField?.previousElementSibling as HTMLMatSelectElement;
+      return selectElement;
+    };
+
+    optionControl?.valueChanges.subscribe(() => {
+      setTimeout(() => {
+        const selectElement = findMatSelect();
+        const selectedOptionText = selectElement?.querySelector('mat-option.mat-selected')?.textContent?.trim();
+
+        if (selectedOptionText === 'その他') {
+          otherControl?.reset();
+          otherControl?.enable();
+          this.renderer.setStyle(this.el.nativeElement, 'color', 'initial');
+        } else {
+          otherControl?.setValue(selectElement?.value || '');
+          otherControl?.disable();
+          this.renderer.setStyle(this.el.nativeElement, 'color', 'transparent');
+        }
+      });
+    });
+
+    // Initial state setup
+    setTimeout(() => {
+      const selectElement = findMatSelect();
+      const initialSelectedOptionText = selectElement?.querySelector('mat-option.mat-selected')?.textContent?.trim();
+      
+      if (initialSelectedOptionText !== 'その他') {
+        otherControl?.setValue(selectElement?.value || '');
+        otherControl?.disable();
+        this.renderer.setStyle(this.el.nativeElement, 'color', 'transparent');
+      }
+    });
+  }
+}
