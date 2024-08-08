@@ -594,3 +594,70 @@ export class EnableOnOtherDirective implements OnInit {
     });
   }
 }
+
+
+
+
+実際にデータベースを移行するときには、次のような手順でカスタム関数を使ってデコード値をコード値に変換します。
+
+1. 対象テーブルのバックアップを取得する
+データベース移行作業を行う前に、必ずデータベースのバックアップを取得してください。
+
+2. カスタム関数の作成
+まず、PostgreSQLにカスタム関数を作成します。例として以下のようなカスタム関数を使用します。
+
+sql
+コードをコピーする
+CREATE OR REPLACE FUNCTION convert_decode_to_code(input_decode_value VARCHAR, other_code_value VARCHAR)
+RETURNS VARCHAR AS $$
+DECLARE
+    result_code_value VARCHAR;
+BEGIN
+    -- デコード値とコード値の対応をハードコード
+    CASE input_decode_value
+        WHEN 'デコード値1' THEN result_code_value := 'コード値1';
+        WHEN 'デコード値2' THEN result_code_value := 'コード値2';
+        -- 必要に応じてさらに対応を追加
+        ELSE result_code_value := other_code_value; -- 対応が見つからない場合はその他のコード値
+    END CASE;
+
+    RETURN result_code_value;
+END;
+$$ LANGUAGE plpgsql;
+3. 移行用のテーブルの作成
+移行後のテーブルを新しい構造で作成します。
+
+sql
+コードをコピーする
+CREATE TABLE new_example_table (
+    id SERIAL PRIMARY KEY,
+    decode_value VARCHAR,
+    code_value VARCHAR
+);
+4. デコード値の変換とデータの挿入
+古いテーブルから新しいテーブルにデータを移行する際に、カスタム関数を使ってデコード値をコード値に変換しながらデータを挿入します。
+
+sql
+コードをコピーする
+INSERT INTO new_example_table (id, decode_value, code_value)
+SELECT id, decode_value, convert_decode_to_code(decode_value, 'OTHER')
+FROM example_table;
+5. 移行が完了したことを確認
+データが新しいテーブルに正しく移行され、デコード値が正しいコード値に変換されたことを確認します。
+
+6. 古いテーブルの削除（オプション）
+すべてが正しく移行されたことを確認した後、古いテーブルを削除することができます。ただし、データのバックアップがあることを再確認してください。
+
+sql
+コードをコピーする
+DROP TABLE example_table;
+まとめ
+上記の手順を通じて、カスタム関数を使用してデコード値をコード値に変換しながらデータを新しいテーブルに移行することができます。移行の際には、データの整合性と安全性を確保するために十分なテストを行いましょう。
+
+
+
+
+
+
+
+
