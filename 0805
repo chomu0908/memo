@@ -660,4 +660,24 @@ DROP TABLE example_table;
 
 
 
+CREATE OR REPLACE FUNCTION convert_decode_to_code(input_decode_value VARCHAR, other_code_value VARCHAR)
+RETURNS VARCHAR AS $$
+DECLARE
+    result_code_value VARCHAR;
+BEGIN
+    IF input_decode_value IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    -- デコード値とコード値の対応をハードコード
+    CASE input_decode_value
+        WHEN 'デコード値1' THEN result_code_value := 'コード値1';
+        WHEN 'デコード値2' THEN result_code_value := 'コード値2';
+        -- 必要に応じてさらに対応を追加
+        ELSE result_code_value := other_code_value; -- 対応が見つからない場合はその他のコード値
+    END CASE;
+
+    RETURN result_code_value;
+END;
+$$ LANGUAGE plpgsql;
 
