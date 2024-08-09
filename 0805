@@ -681,3 +681,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION convert_to_seireki(genko VARCHAR, ymd VARCHAR)
+RETURNS VARCHAR AS $$
+DECLARE
+    year INT;
+    month_day VARCHAR(4);
+    seireki VARCHAR(8);
+BEGIN
+    -- 元号の対応表
+    CASE genko
+        WHEN 'M' THEN year := 1868 + CAST(SUBSTRING(ymd, 1, 2) AS INT) - 1;
+        WHEN 'T' THEN year := 1912 + CAST(SUBSTRING(ymd, 1, 2) AS INT) - 1;
+        WHEN 'S' THEN year := 1926 + CAST(SUBSTRING(ymd, 1, 2) AS INT) - 1;
+        WHEN 'H' THEN year := 1989 + CAST(SUBSTRING(ymd, 1, 2) AS INT) - 1;
+        WHEN 'R' THEN year := 2019 + CAST(SUBSTRING(ymd, 1, 2) AS INT) - 1;
+        ELSE RETURN NULL; -- 未対応の元号の場合はNULLを返す
+    END CASE;
+
+    -- 月日部分を取得
+    month_day := SUBSTRING(ymd, 3, 4);
+
+    -- 西暦に変換し8桁の文字列にする
+    seireki := LPAD(year::TEXT, 4, '0') || month_day;
+
+    RETURN seireki;
+END;
+$$ LANGUAGE plpgsql;
