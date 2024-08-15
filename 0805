@@ -707,3 +707,40 @@ BEGIN
     RETURN seireki;
 END;
 $$ LANGUAGE plpgsql;
+
+
+
+SELECT
+    -- 一連番号の先頭の「0」を「･」に置換
+    REPLACE(
+        -- 一連番号の先頭から連続する0を「･」に置換
+        TRIM(LEADING '0' FROM 
+             REPLACE(
+                REPLACE(
+                    REPLACE(SUBSTRING(車両番号, 1, 4), '0', '･'),
+                '･･･', '･'),
+            '･･', '･')
+        ),
+    '･', '･') AS 一連番号,
+
+    -- 用途コードを取得（5-6桁目）
+    SUBSTRING(車両番号, 5, 2) AS 用途コード,
+    
+    -- 分類番号を構成（7-11桁目）
+    CONCAT(
+        SUBSTRING(車両番号, 7, 1),
+        CASE
+            WHEN SUBSTRING(車両番号, 8, 1) = '0' THEN
+                -- 分類番号が2桁の場合（例：01 → 100、02 → 200など）
+                SUBSTRING(車両番号, 9, 2) + '0'
+            ELSE
+                -- 分類番号が3桁の場合
+                SUBSTRING(車両番号, 8, 2)
+        END
+    ) AS 分類番号,
+
+    -- 運輸支局コードを取得（12-16桁目）
+    SUBSTRING(車両番号, 12, 5) AS 運輸支局コード
+    
+FROM
+    車両テーブル;  -- テーブル名を適切に変更してください
