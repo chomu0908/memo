@@ -1,0 +1,102 @@
+MyBatisでresultMapを使用して入れ子構造（ネストされたオブジェクト）をマッピングする例を紹介します。この例では、社員（Employee）と部署（Department）のデータをデータベースから取得し、社員のオブジェクトの中に部署のオブジェクトを入れ子にしてマッピングするケースを扱います。
+
+データベース構造の例
+Employeeテーブル
+
+id (int)
+name (varchar)
+department_id (int)
+Departmentテーブル
+
+id (int)
+name (varchar)
+Javaクラスの定義
+まず、EmployeeとDepartmentのJavaクラスを定義します。
+
+java
+コードをコピーする
+public class Department {
+    private int id;
+    private String name;
+
+    // Getters and Setters
+}
+
+public class Employee {
+    private int id;
+    private String name;
+    private Department department;
+
+    // Getters and Setters
+}
+MyBatisのXMLマッパーファイル
+次に、resultMapを使って、EmployeeとDepartmentをマッピングするMyBatisのXMLマッパーファイルを作成します。
+
+xml
+コードをコピーする
+<mapper namespace="com.example.mapper.EmployeeMapper">
+
+    <!-- Departmentのマッピング -->
+    <resultMap id="DepartmentResultMap" type="com.example.model.Department">
+        <id property="id" column="department_id" />
+        <result property="name" column="department_name" />
+    </resultMap>
+
+    <!-- Employeeのマッピング（Departmentを入れ子にする） -->
+    <resultMap id="EmployeeResultMap" type="com.example.model.Employee">
+        <id property="id" column="id" />
+        <result property="name" column="name" />
+        <association property="department" javaType="com.example.model.Department" resultMap="DepartmentResultMap"/>
+    </resultMap>
+
+    <!-- SQLクエリ -->
+    <select id="selectEmployeeWithDepartment" resultMap="EmployeeResultMap">
+        SELECT e.id, e.name, d.id as department_id, d.name as department_name
+        FROM Employee e
+        LEFT JOIN Department d ON e.department_id = d.id
+        WHERE e.id = #{id}
+    </select>
+
+</mapper>
+XMLファイルの各部分の説明
+<resultMap>タグ（DepartmentResultMap）:
+
+DepartmentクラスをマッピングするためのresultMapです。department_idカラムとdepartment_nameカラムが、Departmentクラスのidおよびnameプロパティにマッピングされます。
+<resultMap>タグ（EmployeeResultMap）:
+
+EmployeeクラスをマッピングするためのresultMapです。idとnameカラムがそれぞれEmployeeクラスのidおよびnameプロパティにマッピングされます。
+<association>タグ: Employeeクラスのdepartmentプロパティに対して、Departmentクラスを入れ子にマッピングします。javaType属性にはDepartmentクラスを指定し、resultMap属性にはDepartmentResultMapを指定します。
+SQLクエリ（<select>タグ）:
+
+EmployeeテーブルとDepartmentテーブルを結合し、Employeeとその関連するDepartmentを一緒に取得するクエリです。
+resultMap属性でEmployeeResultMapを指定することで、クエリの結果をEmployeeオブジェクトにマッピングします。
+使用例
+java
+コードをコピーする
+// EmployeeMapper.java
+public interface EmployeeMapper {
+    Employee selectEmployeeWithDepartment(int id);
+}
+
+// ServiceやControllerでの使用例
+@Autowired
+private EmployeeMapper employeeMapper;
+
+public Employee getEmployeeWithDepartment(int id) {
+    return employeeMapper.selectEmployeeWithDepartment(id);
+}
+このコードを実行すると、指定したidに対応するEmployeeオブジェクトが返され、Employeeオブジェクト内には、関連するDepartmentオブジェクトが入れ子になって格納されます。
+
+まとめ
+resultMapの<association>タグを使用して、入れ子構造（ネストされたオブジェクト）をマッピングします。
+XMLファイル内に、各テーブルに対応するresultMapを定義し、それを入れ子構造で使用するオブジェクトに関連付けます。
+クエリの結果が複数のテーブルからデータを取得する場合でも、複雑なオブジェクト構造をMyBatisで自動的にマッピングできます。
+これにより、データベースから取得した複数のテーブルのデータを、入れ子構造を持つJavaオブジェクトに効率的に変換できます。
+
+
+
+
+
+
+
+
