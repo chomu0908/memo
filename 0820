@@ -1,0 +1,225 @@
+MyBatisでテーブルから全レコードを取得する方法を、セレクトオールする場合の手順としてまとめます。
+
+1. 依存関係の追加
+プロジェクトのpom.xml（Maven）またはbuild.gradle（Gradle）にMyBatis関連の依存関係を追加します。
+
+Maven (pom.xml)
+xml
+コードをコピーする
+<dependencies>
+    <!-- Spring Boot Starter Web -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <!-- Spring Boot Starter Data MyBatis -->
+    <dependency>
+        <groupId>org.mybatis.spring.boot</groupId>
+        <artifactId>mybatis-spring-boot-starter</artifactId>
+    </dependency>
+
+    <!-- H2 Database (for testing, replace with your database dependency) -->
+    <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <scope>runtime</scope>
+    </dependency>
+</dependencies>
+Gradle (build.gradle)
+groovy
+コードをコピーする
+dependencies {
+    // Spring Boot Starter Web
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Spring Boot Starter Data MyBatis
+    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter'
+
+    // H2 Database (for testing, replace with your database dependency)
+    runtimeOnly 'com.h2database:h2'
+}
+2. アプリケーションの設定
+application.properties または application.yml にデータベース接続設定とMyBatisの設定を追加します。
+
+application.properties
+properties
+コードをコピーする
+# Database URL
+spring.datasource.url=jdbc:h2:mem:testdb
+
+# Database driver class name
+spring.datasource.driver-class-name=org.h2.Driver
+
+# Database username
+spring.datasource.username=sa
+
+# Database password
+spring.datasource.password=
+
+# MyBatis Configuration
+mybatis.mapper-locations=classpath:mappers/*.xml
+mybatis.type-aliases-package=com.example.demo.entity
+3. エンティティクラスの作成
+データベースのテーブルに対応するエンティティクラスを作成します。
+
+java
+コードをコピーする
+package com.example.demo.entity;
+
+public class Item {
+
+    private Long id;
+    private String name;
+
+    // Getters and setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+}
+4. マッパーインターフェースの作成
+マッパーインターフェースに、データベースから全レコードを取得するメソッドを定義します。
+
+java
+コードをコピーする
+package com.example.demo.mapper;
+
+import com.example.demo.entity.Item;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
+
+@Mapper
+public interface ItemMapper {
+
+    @Select("SELECT * FROM item")
+    List<Item> findAll();
+}
+5. マッパーXMLの作成
+XMLファイルを使ってSQLクエリを定義する場合、src/main/resources/mappers フォルダにマッパーXMLファイルを作成します。
+
+src/main/resources/mappers/ItemMapper.xml
+xml
+コードをコピーする
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.demo.mapper.ItemMapper">
+
+    <select id="findAll" resultType="com.example.demo.entity.Item">
+        SELECT id, name
+        FROM item
+    </select>
+
+</mapper>
+6. サービスクラスの作成
+マッパーインターフェースを使用してデータベース操作を行うサービスクラスを作成します。
+
+java
+コードをコピーする
+package com.example.demo.service;
+
+import com.example.demo.entity.Item;
+import com.example.demo.mapper.ItemMapper;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class ItemService {
+
+    private final ItemMapper itemMapper;
+
+    public ItemService(ItemMapper itemMapper) {
+        this.itemMapper = itemMapper;
+    }
+
+    public List<Item> getAllItems() {
+        return itemMapper.findAll();
+    }
+}
+7. コントローラークラスの作成
+サービスを使用して全レコードを取得するコントローラークラスを作成します。
+
+java
+コードをコピーする
+package com.example.demo.controller;
+
+import com.example.demo.entity.Item;
+import com.example.demo.service.ItemService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/items")
+public class ItemController {
+
+    private final ItemService itemService;
+
+    public ItemController(ItemService itemService) {
+        this.itemService = itemService;
+    }
+
+    @GetMapping
+    public List<Item> getAllItems() {
+        return itemService.getAllItems();
+    }
+}
+8. アプリケーションの起動
+DemoApplication クラスの main メソッドを実行してアプリケーションを起動します。
+
+java
+コードをコピーする
+package com.example.demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class DemoApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}
+9. データベースにデータを追加
+src/main/resources/data.sql ファイルを使って、データベースに初期データを追加します。
+
+data.sql
+sql
+コードをコピーする
+INSERT INTO item (name) VALUES ('Item1');
+INSERT INTO item (name) VALUES ('Item2');
+10. ブラウザで確認
+ブラウザで以下のURLにアクセスして、全レコードが表示されることを確認します。
+
+bash
+コードをコピーする
+http://localhost:8080/items
+これで、MyBatisを使ってテーブルから全レコードを取得し、Spring Bootアプリケーションで表示する設定が完了します。
+
+
+
+
+
+
+
+
