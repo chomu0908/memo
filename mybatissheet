@@ -1,0 +1,149 @@
+MyBatis XML Cheat Sheet
+基本的な要素
+<mapper>: マッパーXMLファイルのルート要素。namespace属性で対応するインターフェースを指定。
+
+xml
+コードをコピーする
+<mapper namespace="com.example.UserMapper">
+</mapper>
+<select>: SELECTクエリを定義。id属性はメソッド名に対応、resultTypeで戻り値の型を指定。
+
+xml
+コードをコピーする
+<select id="selectAll" resultType="com.example.User">
+    SELECT * FROM users
+</select>
+<insert>: INSERTクエリを定義。
+
+xml
+コードをコピーする
+<insert id="insertUser">
+    INSERT INTO users (name, age) VALUES (#{name}, #{age})
+</insert>
+<update>: UPDATEクエリを定義。
+
+xml
+コードをコピーする
+<update id="updateUser">
+    UPDATE users SET name = #{name}, age = #{age} WHERE id = #{id}
+</update>
+<delete>: DELETEクエリを定義。
+
+xml
+コードをコピーする
+<delete id="deleteUser">
+    DELETE FROM users WHERE id = #{id}
+</delete>
+結果マッピング
+<resultMap>: 結果セットをオブジェクトにマッピングするための設定。
+
+xml
+コードをコピーする
+<resultMap id="UserResultMap" type="com.example.User">
+    <id property="id" column="user_id"/>
+    <result property="name" column="user_name"/>
+    <result property="age" column="user_age"/>
+</resultMap>
+<association>: 一対一の関連をマッピング。
+
+xml
+コードをコピーする
+<association property="address" column="address_id" javaType="com.example.Address">
+    <id property="id" column="address_id"/>
+    <result property="street" column="street"/>
+</association>
+<collection>: 一対多の関連をマッピング。
+
+xml
+コードをコピーする
+<collection property="orders" ofType="com.example.Order">
+    <id property="id" column="order_id"/>
+    <result property="orderDate" column="order_date"/>
+</collection>
+SQLの再利用
+<sql>: SQLフラグメントの定義。
+
+xml
+コードをコピーする
+<sql id="Base_Column_List">
+    id, name, age, address
+</sql>
+<include>: 定義済みのSQLフラグメントをインクルード。
+
+xml
+コードをコピーする
+<select id="selectAll" resultType="com.example.User">
+    SELECT
+    <include refid="Base_Column_List"/>
+    FROM users
+</select>
+動的SQL
+<if>: 条件付きでSQLを生成。
+
+xml
+コードをコピーする
+<select id="findUsers" resultType="com.example.User">
+    SELECT * FROM users WHERE 1=1
+    <if test="name != null">
+        AND name = #{name}
+    </if>
+    <if test="age != null">
+        AND age = #{age}
+    </if>
+</select>
+<choose>: 複数の条件から一つを選択してSQLを生成。
+
+xml
+コードをコピーする
+<select id="findUsers" resultType="com.example.User">
+    SELECT * FROM users WHERE 1=1
+    <choose>
+        <when test="name != null">
+            AND name = #{name}
+        </when>
+        <when test="age != null">
+            AND age = #{age}
+        </when>
+        <otherwise>
+            AND status = 'ACTIVE'
+        </otherwise>
+    </choose>
+</select>
+<trim>: プレフィックスやサフィックスを付ける、またはトリムする。
+
+xml
+コードをコピーする
+<trim prefix="WHERE" prefixOverrides="AND |OR">
+    <if test="name != null">
+        AND name = #{name}
+    </if>
+    <if test="age != null">
+        AND age = #{age}
+    </if>
+</trim>
+バッチ処理
+<foreach>: コレクションをループしてSQLを生成。
+xml
+コードをコピーする
+<insert id="insertUsers">
+    INSERT INTO users (id, name, age) VALUES
+    <foreach collection="list" item="user" separator=",">
+        (#{user.id}, #{user.name}, #{user.age})
+    </foreach>
+</insert>
+キャッシュ
+<cache>: マッパー全体の結果キャッシュを有効にする。
+
+xml
+コードをコピーする
+<cache/>
+<cache-ref>: 他のマッパーのキャッシュを参照する。
+
+xml
+コードをコピーする
+<cache-ref namespace="com.example.OtherMapper"/>
+
+
+
+
+
