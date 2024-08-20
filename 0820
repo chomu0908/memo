@@ -223,3 +223,32 @@ http://localhost:8080/items
 
 
 
+package com.example.demo.controller;
+
+import com.example.demo.entity.Item;
+import com.example.demo.mapper.ItemMapper;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api")
+public class ItemController {
+    private final ItemMapper itemMapper;
+
+    public ItemController(ItemMapper itemMapper) {
+        this.itemMapper = itemMapper;
+    }
+
+    @GetMapping("/check-db")
+    public String checkDatabaseConnection() {
+        try {
+            List<Item> items = itemMapper.findAll(); // データベースから全てのアイテムを取得
+            return "Database connection successful! Number of items: " + items.size();
+        } catch (Exception e) {
+            return "Database connection failed: " + e.getMessage();
+        }
+    }
+}
