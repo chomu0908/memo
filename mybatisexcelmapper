@@ -90,3 +90,7 @@ Function MapPostgreSQLToJDBCType(postgresType As String) As String
             MapPostgreSQLToJDBCType = "OTHER"
     End Select
 End Function
+
+
+
+Microsoft ActiveX Data Objects 6.1 Library
