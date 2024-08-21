@@ -1,0 +1,133 @@
+Sub GenerateMyBatisMapperXMLAndEntities_PostgreSQL()
+    Dim conn As Object
+    Dim rsTables As Object
+    Dim rsColumns As Object
+    Dim dbName As String
+    Dim tableName As String
+    Dim filePath As String
+    Dim xmlFile As Object
+    Dim entityFile As Object
+    Dim queryTables As String
+    Dim queryColumns As String
+    
+    ' データベース接続用の設定を行います
+    dbName = "YourDatabaseName"  ' データベース名を設定します
+    filePath = "C:\path\to\save\"  ' XMLファイルおよびエンティティクラスの保存ディレクトリを設定します
+    
+    ' PostgreSQLデータベースに接続します
+    Set conn = CreateObject("ADODB.Connection")
+    conn.ConnectionString = "Driver={PostgreSQL Unicode};Server=YourServerAddress;Port=5432;Database=" & dbName & ";Uid=YourUsername;Pwd=YourPassword;"
+    conn.Open
+    
+    ' 全テーブルのリストを取得するSQLクエリ
+    queryTables = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'"
+    
+    ' SQLクエリを実行して結果を取得します
+    Set rsTables = CreateObject("ADODB.Recordset")
+    rsTables.Open queryTables, conn
+    
+    ' 各テーブルについてループ
+    Do While Not rsTables.EOF
+        tableName = rsTables("table_name")
+        
+        ' テーブルの列情報を取得するSQLクエリ
+        queryColumns = "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '" & tableName & "'"
+        Set rsColumns = CreateObject("ADODB.Recordset")
+        rsColumns.Open queryColumns, conn
+        
+        ' 1. Mapper XMLファイルの作成
+        Set xmlFile = CreateObject("Scripting.FileSystemObject").CreateTextFile(filePath & tableName & "_mapper.xml", True)
+        
+        ' XMLファイルのヘッダーを記述
+        xmlFile.WriteLine "<?xml version=""1.0"" encoding=""UTF-8"" ?>"
+        xmlFile.WriteLine "<!DOCTYPE mapper PUBLIC ""-//mybatis.org//DTD Mapper 3.0//EN"" ""http://mybatis.org/dtd/mybatis-3-mapper.dtd"">"
+        xmlFile.WriteLine "<mapper namespace=""YourNamespace." & tableName & """>"
+        xmlFile.WriteLine "    <resultMap id=""BaseResultMap"" type=""YourNamespace." & tableName & """>"
+        
+        ' 2. エンティティクラスファイルの作成
+        Set entityFile = CreateObject("Scripting.FileSystemObject").CreateTextFile(filePath & tableName & ".java", True)
+        
+        ' エンティティクラスのヘッダーを記述
+        entityFile.WriteLine "package YourNamespace;"
+        entityFile.WriteLine ""
+        entityFile.WriteLine "public class " & tableName & " {"
+        
+        ' カラム情報を書き込む
+        Do While Not rsColumns.EOF
+            ' XMLにカラム情報を記述
+            xmlFile.WriteLine "        <result column=""" & rsColumns("column_name") & """ property=""" & rsColumns("column_name") & """ jdbcType=""" & MapPostgreSQLToJDBCType(rsColumns("data_type")) & """ />"
+            
+            ' エンティティクラスにフィールドを記述
+            entityFile.WriteLine "    private " & MapPostgreSQLToJavaType(rsColumns("data_type")) & " " & rsColumns("column_name") & ";"
+            
+            rsColumns.MoveNext
+        Loop
+        
+        ' XMLファイルのフッターを記述
+        xmlFile.WriteLine "    </resultMap>"
+        xmlFile.WriteLine "</mapper>"
+        
+        ' エンティティクラスのフッターを記述
+        entityFile.WriteLine "}"
+        
+        ' リソースを解放
+        xmlFile.Close
+        entityFile.Close
+        rsColumns.Close
+        
+        ' 次のテーブルに移動
+        rsTables.MoveNext
+    Loop
+    
+    ' リソースを解放
+    rsTables.Close
+    conn.Close
+    
+    MsgBox "全テーブルのMyBatis Mapper XMLファイルとエンティティクラスが生成されました。"
+End Sub
+
+' PostgreSQLのデータ型をJDBCの型にマッピングする関数
+Function MapPostgreSQLToJDBCType(postgresType As String) As String
+    Select Case postgresType
+        Case "integer"
+            MapPostgreSQLToJDBCType = "INTEGER"
+        Case "bigint"
+            MapPostgreSQLToJDBCType = "BIGINT"
+        Case "boolean"
+            MapPostgreSQLToJDBCType = "BOOLEAN"
+        Case "character varying", "varchar", "text"
+            MapPostgreSQLToJDBCType = "VARCHAR"
+        Case "date"
+            MapPostgreSQLToJDBCType = "DATE"
+        Case "timestamp", "timestamp without time zone"
+            MapPostgreSQLToJDBCType = "TIMESTAMP"
+        Case "numeric", "decimal"
+            MapPostgreSQLToJDBCType = "DECIMAL"
+        ' 必要に応じて他のデータ型もマッピングします
+        Case Else
+            MapPostgreSQLToJDBCType = "OTHER"
+    End Select
+End Function
+
+' PostgreSQLのデータ型をJavaの型にマッピングする関数
+Function MapPostgreSQLToJavaType(postgresType As String) As String
+    Select Case postgresType
+        Case "integer"
+            MapPostgreSQLToJavaType = "int"
+        Case "bigint"
+            MapPostgreSQLToJavaType = "long"
+        Case "boolean"
+            MapPostgreSQLToJavaType = "boolean"
+        Case "character varying", "varchar", "text"
+            MapPostgreSQLToJavaType = "String"
+        Case "date"
+            MapPostgreSQLToJavaType = "java.sql.Date"
+        Case "timestamp", "timestamp without time zone"
+            MapPostgreSQLToJavaType = "java.sql.Timestamp"
+        Case "numeric", "decimal"
+            MapPostgreSQLToJavaType = "java.math.BigDecimal"
+        ' 必要に応じて他のデータ型もマッピングします
+        Case Else
+            MapPostgreSQLToJavaType = "Object"
+    End Select
+End Function
