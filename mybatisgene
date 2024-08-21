@@ -1,0 +1,82 @@
+1. Mavenプロジェクトの設定
+MyBatis Generatorを使用するには、Mavenプロジェクトとして設定するのが一般的です。以下の手順で進めてください。
+
+a. Mavenプロジェクトの作成
+Eclipseを開く: Eclipseを起動します。
+新しいMavenプロジェクトの作成:
+メニューから File > New > Project... を選択します。
+Maven Project を選択し、Next をクリックします。
+必要に応じて Create a simple project (skip archetype selection) にチェックを入れ、Next をクリックします。
+Group Id と Artifact Id を設定し、Finish をクリックします。
+b. pom.xml の設定
+MyBatis Generatorの依存関係とプラグインを追加:
+
+pom.xml ファイルを開き、以下の依存関係とプラグインを追加します。
+xml
+コードをコピーする
+<dependencies>
+    <dependency>
+        <groupId>org.mybatis.generator</groupId>
+        <artifactId>mybatis-generator-core</artifactId>
+        <version>1.4.0</version>
+    </dependency>
+    <!-- その他の依存関係 -->
+</dependencies>
+
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.mybatis.generator</groupId>
+            <artifactId>mybatis-generator-maven-plugin</artifactId>
+            <version>1.4.0</version>
+            <executions>
+                <execution>
+                    <goals>
+                        <goal>generate</goal>
+                    </goals>
+                </execution>
+            </executions>
+            <configuration>
+                <configurationFile>${basedir}/src/main/resources/generatorConfig.xml</configurationFile>
+            </configuration>
+        </plugin>
+    </plugins>
+</build>
+2. MyBatis Generator 設定ファイルの作成
+設定ファイルの作成:
+
+src/main/resources ディレクトリに generatorConfig.xml という名前で設定ファイルを作成します。
+このファイルには、データベース接続設定や生成するファイルの設定を記述します。
+xml
+コードをコピーする
+<!DOCTYPE generatorConfiguration PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN" "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+<generatorConfiguration>
+    <context id="DB2Tables" targetRuntime="MyBatis3">
+        <jdbcConnection driverClass="com.mysql.cj.jdbc.Driver"
+                        connectionURL="jdbc:mysql://localhost:3306/your_database"
+                        userId="your_username"
+                        password="your_password"/>
+        
+        <javaModelGenerator targetPackage="com.example.model" targetProject="src/main/java"/>
+        <sqlMapGenerator targetPackage="com.example.mapper" targetProject="src/main/resources"/>
+        <javaClientGenerator type="XMLMAPPER" targetPackage="com.example.mapper" targetProject="src/main/java"/>
+        
+        <table tableName="employee" domainObjectName="Employee"/>
+        <table tableName="department" domainObjectName="Department"/>
+    </context>
+</generatorConfiguration>
+3. MyBatis Generatorの実行
+Eclipse内での実行:
+Mavenのクリーンとビルド:
+Project メニューから Clean... を選択し、プロジェクトをクリーンします。
+Project メニューから Build Project を選択して、プロジェクトをビルドします。
+MyBatis Generatorの実行:
+プロジェクトを右クリックし、Run As > Maven build... を選択します。
+Goals フィールドに mybatis-generator:generate と入力し、Run ボタンをクリックします。
+4. 結果の確認
+MyBatis Generatorが正常に実行されると、targetProjectで指定されたディレクトリに、生成されたJavaクラスやマッパーXMLが作成されます。
+生成されたファイルを確認して、必要に応じて修正やカスタマイズを行います。
+トラブルシューティング
+ログの確認: Mavenの実行結果やエラーメッセージは、Eclipseのコンソールタブに表示されます。エラーが発生した場合、ここで詳細な情報を確認できます。
+設定ファイルの確認: generatorConfig.xml に誤りがないか、接続情報やパスが正しいか再確認してください。
+この手順に従うことで、Eclipse内でMyBatis Generatorを設定し、実行することができます。
