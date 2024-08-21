@@ -1,0 +1,214 @@
+REST通信で受け取ったパラメーターを利用して、SQLクエリを組みたい場合、MyBatisを使うと、動的SQLやパラメーターのバインディングが容易に行えます。具体的には、受け取ったパラメーターをMyBatisのMapperインターフェースやXMLマッパーに渡し、それを元にSQLを実行します。
+
+シナリオ
+例えば、REST APIを通じて/employees?departmentId=2のようなリクエストが来たとします。このクエリパラメーターを使って、特定の部署に所属する社員を取得するSQLクエリを組みます。
+
+1. Spring Boot ControllerでのRESTエンドポイント
+まず、REST APIでクエリパラメーターを受け取るコントローラーを作成します。
+
+java
+コードをコピーする
+@RestController
+@RequestMapping("/employees")
+public class EmployeeController {
+
+    @Autowired
+    private EmployeeService employeeService;
+
+    @GetMapping
+    public List<Employee> getEmployees(@RequestParam(required = false) Integer departmentId) {
+        return employeeService.getEmployeesByDepartment(departmentId);
+    }
+}
+2. Serviceクラスでのパラメーターの処理
+Serviceクラスで受け取ったパラメーターをMyBatisのMapperに渡します。
+
+java
+コードをコピーする
+@Service
+public class EmployeeService {
+
+    @Autowired
+    private EmployeeMapper employeeMapper;
+
+    public List<Employee> getEmployeesByDepartment(Integer departmentId) {
+        return employeeMapper.selectEmployeesByDepartment(departmentId);
+    }
+}
+3. MyBatis Mapperインターフェースの定義
+MapperインターフェースでSQLクエリを実行するメソッドを定義します。
+
+java
+コードをコピーする
+public interface EmployeeMapper {
+
+    @Select("<script>" +
+            "SELECT * FROM Employee " +
+            "<where>" +
+            "<if test='departmentId != null'>" +
+            "   department_id = #{departmentId}" +
+            "</if>" +
+            "</where>" +
+            "</script>")
+    List<Employee> selectEmployeesByDepartment(@Param("departmentId") Integer departmentId);
+}
+4. 動的SQLの構成
+ここで重要なのは、動的SQLを使用して、クエリパラメーターが存在する場合のみ、条件を付加することです。MyBatisの<script>タグと<if>タグを使うことで、条件付きでSQLクエリを構築できます。
+
+<script>タグ: MyBatisで動的SQLを記述する際に使用するタグ。SQL全体を囲みます。
+<if>タグ: 条件付きでSQLの一部を含めるために使用されます。この例では、departmentIdがnullでない場合にのみ、WHERE句を追加します。
+5. XMLで動的SQLを使用する場合
+アノテーションではなく、XMLファイルで動的SQLを構築する場合の例も紹介します。
+
+xml
+コードをコピーする
+<mapper namespace="com.example.mapper.EmployeeMapper">
+
+    <select id="selectEmployeesByDepartment" resultType="com.example.model.Employee">
+        SELECT * FROM Employee
+        <where>
+            <if test="departmentId != null">
+                department_id = #{departmentId}
+            </if>
+        </where>
+    </select>
+
+</mapper>
+まとめ
+動的SQLの構築: MyBatisの<script>や<if>タグを使用して、受け取ったパラメーターに応じた動的なSQLを構築します。
+パラメーターの受け渡し: REST APIで受け取ったパラメーターをそのままMapperメソッドの引数として渡し、それに基づいてクエリを実行します。
+アノテーション vs XML: シンプルな動的SQLならアノテーションでも対応可能ですが、複雑な動的クエリや再利用性を考えるならXMLが有利です。
+この方法で、REST APIで受け取ったクエリパラメーターを使って、柔軟にSQLクエリを組むことができます。
+
+
+
+
+
+
+
+制限が 12:23 後. にリセットされるまで、回答では基本モデルが使用されます。
+
+Plus を入手する
+
+
+
+
+
+
+REST APIでJSONデータを受け取った場合も、MyBatisでのSQLクエリ構築やデータ操作は同様の手法で行いますが、JSONの構造に応じて適切にパラメーターを処理する必要があります。以下の手順で、JSONデータを受け取り、そのデータを使ってSQLクエリを実行する方法を説明します。
+
+1. JSONデータを受け取るController
+まず、Spring BootのコントローラーでJSONデータを受け取ります。例えば、EmployeeSearchRequestというクラスで検索条件を定義し、それをリクエストボディとして受け取ります。
+
+java
+コードをコピーする
+@RestController
+@RequestMapping("/employees")
+public class EmployeeController {
+
+    @Autowired
+    private EmployeeService employeeService;
+
+    @PostMapping("/search")
+    public List<Employee> searchEmployees(@RequestBody EmployeeSearchRequest request) {
+        return employeeService.searchEmployees(request);
+    }
+}
+2. リクエストボディ用のDTOクラス
+JSONデータをJavaオブジェクトとして受け取るために、DTOクラスを定義します。これにより、クエリパラメーターを柔軟に取り扱えます。
+
+java
+コードをコピーする
+public class EmployeeSearchRequest {
+    private Integer departmentId;
+    private String name;
+    private Integer minSalary;
+    private Integer maxSalary;
+
+    // Getters and Setters
+}
+3. Serviceクラスでのデータ処理
+Serviceクラスで受け取ったDTOオブジェクトを使って、MyBatisのMapperメソッドを呼び出します。
+
+java
+コードをコピーする
+@Service
+public class EmployeeService {
+
+    @Autowired
+    private EmployeeMapper employeeMapper;
+
+    public List<Employee> searchEmployees(EmployeeSearchRequest request) {
+        return employeeMapper.selectEmployeesByCriteria(
+            request.getDepartmentId(),
+            request.getName(),
+            request.getMinSalary(),
+            request.getMaxSalary()
+        );
+    }
+}
+4. MyBatis Mapperインターフェースの定義
+Mapperインターフェースで、受け取った条件に基づいて動的にSQLクエリを組み立てます。アノテーションを使う場合、以下のように記述できます。
+
+java
+コードをコピーする
+public interface EmployeeMapper {
+
+    @Select("<script>" +
+            "SELECT * FROM Employee " +
+            "<where>" +
+            "<if test='departmentId != null'> AND department_id = #{departmentId} </if>" +
+            "<if test='name != null'> AND name LIKE CONCAT('%', #{name}, '%') </if>" +
+            "<if test='minSalary != null'> AND salary >= #{minSalary} </if>" +
+            "<if test='maxSalary != null'> AND salary <= #{maxSalary} </if>" +
+            "</where>" +
+            "</script>")
+    List<Employee> selectEmployeesByCriteria(
+        @Param("departmentId") Integer departmentId,
+        @Param("name") String name,
+        @Param("minSalary") Integer minSalary,
+        @Param("maxSalary") Integer maxSalary
+    );
+}
+5. XMLファイルでの動的SQL
+XMLで動的SQLを定義する場合、以下のように記述します。
+
+xml
+コードをコピーする
+<mapper namespace="com.example.mapper.EmployeeMapper">
+
+    <select id="selectEmployeesByCriteria" resultType="com.example.model.Employee">
+        SELECT * FROM Employee
+        <where>
+            <if test="departmentId != null">
+                AND department_id = #{departmentId}
+            </if>
+            <if test="name != null">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="minSalary != null">
+                AND salary >= #{minSalary}
+            </if>
+            <if test="maxSalary != null">
+                AND salary <= #{maxSalary}
+            </if>
+        </where>
+    </select>
+
+</mapper>
+まとめ
+JSONの受け取り: @RequestBodyを使って、JSONデータをJavaオブジェクト（DTOクラス）として受け取ります。
+サービス層での処理: 受け取ったDTOを使って、MyBatisのMapperメソッドを呼び出します。
+動的SQL: アノテーションやXMLを使って、受け取った条件に基づいて動的にSQLクエリを組み立てます。
+XML vs アノテーション: 複雑なクエリや条件付きでSQLを組み立てる場合は、XMLファイルを使った方が可読性や保守性が高くなります。
+これにより、JSONデータを基にして柔軟にSQLクエリを組み立て、データベースから必要な情報を取得できます。
+
+
+
+
+
+
+
+
+
+
