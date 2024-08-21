@@ -1,0 +1,33 @@
+EclipseでMyBatisのログを有効にする方法
+MyBatisのログを有効にするには、プロジェクトで使用しているロギングフレームワークに応じた設定を行う必要があります。ここでは、Spring Bootプロジェクトを前提に、logbackを使った設定例を紹介しますが、log4jを使用している場合の手順も簡単に説明します。
+
+1. logback の設定 (Spring Bootの場合)
+Spring Bootを使っている場合、logbackがデフォルトのロギングフレームワークです。以下の手順で設定します。
+
+logbackの設定ファイルを作成する
+
+src/main/resourcesフォルダにlogback-spring.xmlというファイルを作成します。
+
+xml
+コードをコピーする
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- MyBatisのログ出力設定 -->
+    <logger name="org.mybatis" level="DEBUG" additivity="false">
+        <appender-ref ref="STDOUT" />
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+</configuration>
+この設定により、MyBatisに関するログがコンソールに出力されます。
+
+プロジェクトを再起動する
+
+設定ファイルを保存し、プロジェクトを再起動します。これで、MyBatisが実行するSQLやパラメータ、結果マッピングに関するログがコンソールに表示されるようになります。
