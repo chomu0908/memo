@@ -652,3 +652,90 @@ Function GetPrimaryKeyCondition(primaryKeyFields As Collection) As Variant
     
     GetPrimaryKeyCondition = conditions
 End Function
+
+
+
+
+
+
+
+
+
+Sub GenerateMyBatisMapperFromSQL()
+    ' ... (前のコードは省略)
+    
+    ' 行ごとに処理
+    lines = Split(sqlContent, vbCrLf)
+    
+    ' テーブル名を探してXMLファイルとインターフェースファイルを作成
+    For i = LBound(lines) To UBound(lines)
+        If InStr(lines(i), "CREATE TABLE") > 0 Then
+            tableName = ExtractTableName(lines(i))
+            Set primaryKeyFields = New Collection
+            
+            ' 次のセクションでPRIMARY KEYを探す
+            Do While i < UBound(lines) And Not InStr(lines(i), ");") > 0
+                If InStr(lines(i), "PRIMARY KEY") > 0 Then
+                    primaryKeyFields = ExtractPrimaryKeyFields(lines(i))
+                End If
+                i = i + 1
+            Loop
+            
+            ' フィールド名、値、UPDATE SET句、PRIMARY KEY条件を取得
+            fieldNames = GetFieldNames(lines, tableName)
+            fieldValues = GetFieldValues(fieldNames)
+            updateSetClause = GetUpdateSetClause(fieldNames)
+            primaryKeyConditions = GetPrimaryKeyCondition(primaryKeyFields)
+            
+            ' インターフェースファイルの生成開始
+            interfaceFilePath = interfaceDir & tableName & "Mapper.java"
+            Set interfaceStream = CreateObject("ADODB.Stream")
+            interfaceStream.Charset = "UTF-8"
+            interfaceStream.Open
+            
+            ' インターフェースの内容を記述
+            interfaceStream.WriteText "package YourNamespace;" & vbCrLf & vbCrLf
+            interfaceStream.WriteText "import java.util.List;" & vbCrLf & vbCrLf
+            interfaceStream.WriteText "public interface " & tableName & "Mapper {" & vbCrLf
+            
+            ' insertメソッド
+            interfaceStream.WriteText "    void insert(" & tableName & " entity);" & vbCrLf
+            
+            ' selectByIdメソッド
+            Dim selectMethodParams As String
+            selectMethodParams = CreateMethodParams(primaryKeyFields)
+            interfaceStream.WriteText "    " & tableName & " selectById(" & selectMethodParams & ");" & vbCrLf
+            
+            ' updateメソッド
+            interfaceStream.WriteText "    void update(" & tableName & " entity);" & vbCrLf
+            
+            ' deleteByIdメソッド
+            interfaceStream.WriteText "    void deleteById(" & selectMethodParams & ");" & vbCrLf
+            
+            interfaceStream.WriteText "}" & vbCrLf
+            
+            ' インターフェースファイルを保存して閉じる
+            interfaceStream.SaveToFile interfaceFilePath, 2 ' 2 = adSaveCreateOverWrite
+            interfaceStream.Close
+        End If
+    Next i
+    
+    MsgBox "MyBatis Mapper XMLファイルと対応するインターフェースが生成されました。"
+End Sub
+
+' (前の関数は省略)
+
+' PRIMARY KEYに基づいてメソッドの引数リストを生成する関数
+Function CreateMethodParams(primaryKeyFields As Collection) As String
+    Dim params() As String
+    Dim i As Integer
+    
+    ReDim params(primaryKeyFields.Count - 1)
+    
+    For i = 1 To primaryKeyFields.Count
+        ' 必要に応じて型の判別を行い、適切なJavaの型を設定します。ここでは仮にすべてIntegerとしています。
+        params(i - 1) = "Integer " & primaryKeyFields(i)
+    Next i
+    
+    CreateMethodParams = Join(params, ", ")
+End Function
