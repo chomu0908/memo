@@ -153,3 +153,244 @@ Function MapSQLTypeToJavaType(sqlType As String) As String
             MapSQLTypeToJavaType = "OTHER"
     End Select
 End Function
+
+
+
+
+
+
+
+Sub GenerateMyBatisMapperFromSQL()
+    Dim sqlFilePath As String
+    Dim outputDir As String
+    Dim sqlContent As String
+    Dim tableName As String
+    Dim fieldName As String
+    Dim fieldType As String
+    Dim primaryKeyFields As Collection
+    Dim lines As Variant
+    Dim line As Variant
+    Dim xmlFilePath As String
+    Dim xmlStream As Object
+    Dim i As Integer
+    Dim isPrimaryKeyProcessed As Boolean
+    
+    sqlFilePath = "C:\path\to\your\schema.sql"
+    outputDir = "C:\path\to\your\mappers\"
+    
+    ' SQLファイルの読み込み
+    sqlContent = ReadFile(sqlFilePath)
+    
+    ' 行ごとに処理
+    lines = Split(sqlContent, vbCrLf)
+    
+    ' テーブル名を探してXMLファイルを作成
+    For i = LBound(lines) To UBound(lines)
+        If InStr(lines(i), "CREATE TABLE") > 0 Then
+            tableName = ExtractTableName(lines(i))
+            Set primaryKeyFields = New Collection
+            isPrimaryKeyProcessed = False
+            
+            ' 次のセクションでPRIMARY KEYを探す
+            Do While i < UBound(lines) And Not InStr(lines(i), ");") > 0
+                If InStr(lines(i), "PRIMARY KEY") > 0 Then
+                    primaryKeyFields = ExtractPrimaryKeyFields(lines(i))
+                End If
+                i = i + 1
+            Loop
+            
+            ' XMLファイルの生成開始
+            xmlFilePath = outputDir & tableName & "_mapper.xml"
+            Set xmlStream = CreateObject("ADODB.Stream")
+            xmlStream.Charset = "UTF-8"
+            xmlStream.Open
+            
+            ' XMLファイルのヘッダーを記述
+            xmlStream.WriteText "<?xml version=""1.0"" encoding=""UTF-8"" ?>" & vbCrLf
+            xmlStream.WriteText "<!DOCTYPE mapper PUBLIC ""-//mybatis.org//DTD Mapper 3.0//EN"" ""http://mybatis.org/dtd/mybatis-3-mapper.dtd"">" & vbCrLf
+            xmlStream.WriteText "<mapper namespace=""YourNamespace." & tableName & """>" & vbCrLf
+            xmlStream.WriteText "    <resultMap id=""BaseResultMap"" type=""YourNamespace." & tableName & """>" & vbCrLf
+            
+            ' フィールド情報をXMLに追加
+            Do While i < UBound(lines) And Not InStr(lines(i), ");") > 0
+                If InStr(lines(i), "VARCHAR") > 0 Or InStr(lines(i), "INT") > 0 Then
+                    fieldName = ExtractFieldName(lines(i))
+                    fieldType = MapSQLTypeToJavaType(ExtractFieldType(lines(i)))
+                    
+                    ' 主キーを先に追加
+                    If Not isPrimaryKeyProcessed And IsPrimaryKeyField(fieldName, primaryKeyFields) Then
+                        xmlStream.WriteText "        <id column=""" & fieldName & """ property=""" & fieldName & """ jdbcType=""" & fieldType & """ />" & vbCrLf
+                    End If
+                    
+                    ' その他のフィールドを追加
+                    If Not IsPrimaryKeyField(fieldName, primaryKeyFields) Then
+                        xmlStream.WriteText "        <result column=""" & fieldName & """ property=""" & fieldName & """ jdbcType=""" & fieldType & """ />" & vbCrLf
+                    End If
+                    
+                    ' 主キーがすでに処理されたらフラグを立てる
+                    If IsPrimaryKeyField(fieldName, primaryKeyFields) Then
+                        isPrimaryKeyProcessed = True
+                    End If
+                End If
+                i = i + 1
+            Loop
+            
+            ' resultMapの終了
+            xmlStream.WriteText "    </resultMap>" & vbCrLf
+            
+            ' CRUD操作の追加
+            xmlStream.WriteText "    <insert id=""insert"">" & vbCrLf
+            xmlStream.WriteText "        INSERT INTO " & tableName & " (" & Join(GetFieldNames(primaryKeyFields), ", ") & ") VALUES (" & Join(GetFieldValues(primaryKeyFields), ", ") & ")" & vbCrLf
+            xmlStream.WriteText "    </insert>" & vbCrLf
+            
+            xmlStream.WriteText "    <select id=""selectById"" parameterType=""java.lang.Integer"" resultMap=""BaseResultMap"">" & vbCrLf
+            xmlStream.WriteText "        SELECT * FROM " & tableName & " WHERE " & Join(GetPrimaryKeyCondition(primaryKeyFields), " AND ") & vbCrLf
+            xmlStream.WriteText "    </select>" & vbCrLf
+            
+            xmlStream.WriteText "    <update id=""update"">" & vbCrLf
+            xmlStream.WriteText "        UPDATE " & tableName & " SET " & Join(GetUpdateSetClause(primaryKeyFields), ", ") & " WHERE " & Join(GetPrimaryKeyCondition(primaryKeyFields), " AND ") & vbCrLf
+            xmlStream.WriteText "    </update>" & vbCrLf
+            
+            xmlStream.WriteText "    <delete id=""deleteById"" parameterType=""java.lang.Integer"">" & vbCrLf
+            xmlStream.WriteText "        DELETE FROM " & tableName & " WHERE " & Join(GetPrimaryKeyCondition(primaryKeyFields), " AND ") & vbCrLf
+            xmlStream.WriteText "    </delete>" & vbCrLf
+            
+            ' マッパーの終了
+            xmlStream.WriteText "</mapper>" & vbCrLf
+            
+            ' XMLファイルを閉じる
+            xmlStream.SaveToFile xmlFilePath, 2 ' 2 = adSaveCreateOverWrite
+            xmlStream.Close
+        End If
+    Next i
+    
+    MsgBox "MyBatis Mapper XMLファイルが生成されました。"
+End Sub
+
+' ファイルを読み込む関数
+Function ReadFile(filePath As String) As String
+    Dim fileContent As String
+    Dim fileStream As Object
+    Set fileStream = CreateObject("ADODB.Stream")
+    fileStream.Charset = "UTF-8"
+    fileStream.Open
+    fileStream.LoadFromFile filePath
+    fileContent = fileStream.ReadText
+    fileStream.Close
+    ReadFile = fileContent
+End Function
+
+' テーブル名を抽出する関数
+Function ExtractTableName(createTableLine As String) As String
+    ExtractTableName = Trim(Mid(createTableLine, InStr(createTableLine, "TABLE") + 6))
+End Function
+
+' フィールド名を抽出する関数
+Function ExtractFieldName(fieldLine As String) As String
+    ExtractFieldName = Trim(Split(fieldLine, " ")(1))
+End Function
+
+' PRIMARY KEYフィールドを抽出する関数
+Function ExtractPrimaryKeyFields(pkLine As String) As Collection
+    Dim pkFields As Collection
+    Dim pkField As Variant
+    Dim fields As Variant
+    
+    Set pkFields = New Collection
+    pkLine = Replace(pkLine, "PRIMARY KEY (", "")
+    pkLine = Replace(pkLine, ")", "")
+    fields = Split(pkLine, ",")
+    
+    For Each pkField In fields
+        pkFields.Add Trim(pkField)
+    Next pkField
+    
+    Set ExtractPrimaryKeyFields = pkFields
+End Function
+
+' フィールドがPRIMARY KEYかを判定する関数
+Function IsPrimaryKeyField(fieldName As String, pkFields As Collection) As Boolean
+    Dim pkField As Variant
+    
+    For Each pkField In pkFields
+        If fieldName = pkField Then
+            IsPrimaryKeyField = True
+            Exit Function
+        End If
+    Next pkField
+    
+    IsPrimaryKeyField = False
+End Function
+
+' SQLデータ型をJavaデータ型にマッピングする関数
+Function MapSQLTypeToJavaType(sqlType As String) As String
+    Select Case sqlType
+        Case "VARCHAR", "TEXT"
+            MapSQLTypeToJavaType = "VARCHAR"
+        Case "INT", "INTEGER"
+            MapSQLTypeToJavaType = "INTEGER"
+        ' 必要に応じて他のデータ型を追加
+        Case Else
+            MapSQLTypeToJavaType = "OTHER"
+    End Select
+End Function
+
+' フィールド名を取得する関数
+Function GetFieldNames(pkFields As Collection) As Variant
+    Dim fields() As String
+    Dim field As Variant
+    Dim i As Integer
+    
+    ReDim fields(pkFields.Count - 1)
+    i = 0
+    For Each field In pkFields
+        fields(i) = field
+        i = i + 1
+    Next field
+    GetFieldNames = fields
+End Function
+
+' フィールドの値プレースホルダを取得する関数
+Function GetFieldValues(pkFields As Collection) As Variant
+    Dim values() As String
+    Dim field As Variant
+    Dim i As Integer
+    
+    ReDim values(pkFields.Count - 1)
+    i = 0
+    For Each field In pkFields
+        values(i) = "#{" & field & "}"
+        i = i + 1
+    Next field
+    GetFieldValues = values
+End Function
+
+' 主キー条件を取得する関数
+Function GetPrimaryKeyCondition(pkFields As Collection) As Variant
+    Dim conditions() As String
+    Dim field As Variant
+    Dim i As Integer
+    
+    ReDim conditions(pkFields.Count - 1)
+    i = 0
+    For Each field In pkFields
+        conditions(i) = field & " = #{" & field & "}"
+        i = i + 1
+    Next field
+    GetPrimaryKeyCondition = conditions
+End Function
+
+' 更新用のSET句を取得する関数
+Function GetUpdateSetClause(pkFields As Collection) As Variant
+    Dim setClauses() As String
+    Dim field As Variant
+    Dim i As Integer
+    
+    ReDim setClauses(pkFields.Count - 1)
+    i = 0
+    For Each field In pkFields
+        setClauses(i) = field & " = #{" & field & "}"
+        i = i + 1
+    Next field
+    GetUpdateSetClause = setClauses
+End Function
