@@ -94,3 +94,131 @@ End Function
 
 
 Microsoft ActiveX Data Objects 6.1 Library
+
+
+
+
+
+1. PostgreSQLからテーブル生成SQLを取得する
+PostgreSQLのテーブル定義を取得するには、pg_dump コマンドを使用してテーブルスキーマをエクスポートできます。これにより、テーブルのCREATE文が含まれるSQLファイルを作成できます。
+
+bash
+コードをコピーする
+pg_dump -U YourUsername -s -d YourDatabaseName > schema.sql
+ここで、-s はスキーマ（テーブル定義）のみをダンプするオプションです。
+
+2. SQLファイルをテキストファイルに保存する
+エクスポートした schema.sql ファイルをテキストファイルとして保存します。このファイルには、全テーブルのCREATE文が含まれています。
+
+3. テーブル定義からMyBatis Mapper XMLを生成する
+以下は、SQLファイルを解析してMyBatisのMapper XMLを生成するためのVBAコードの基本的な例です。これはテーブルのCREATE文からMyBatis Mapper XMLを作成するための簡略化されたコードです。
+
+VBAコード例
+vba
+コードをコピーする
+Sub GenerateMyBatisMapperFromSQL()
+    Dim sqlFilePath As String
+    Dim outputDir As String
+    Dim sqlContent As String
+    Dim tableName As String
+    Dim fieldName As String
+    Dim fieldType As String
+    Dim lines As Variant
+    Dim line As Variant
+    Dim xmlFile As Object
+    Dim fileSystem As Object
+    Dim i As Integer
+    
+    sqlFilePath = "C:\path\to\your\schema.sql"
+    outputDir = "C:\path\to\your\mappers\"
+    
+    ' SQLファイルの読み込み
+    sqlContent = ReadFile(sqlFilePath)
+    
+    ' 行ごとに処理
+    lines = Split(sqlContent, vbCrLf)
+    
+    ' ファイルシステムオブジェクトの初期化
+    Set fileSystem = CreateObject("Scripting.FileSystemObject")
+    
+    ' テーブル名を探してXMLファイルを作成
+    For i = LBound(lines) To UBound(lines)
+        If InStr(lines(i), "CREATE TABLE") > 0 Then
+            tableName = ExtractTableName(lines(i))
+            Set xmlFile = fileSystem.CreateTextFile(outputDir & tableName & "_mapper.xml", True)
+            
+            ' XMLファイルのヘッダーを記述
+            xmlFile.WriteLine "<?xml version=""1.0"" encoding=""UTF-8"" ?>"
+            xmlFile.WriteLine "<!DOCTYPE mapper PUBLIC ""-//mybatis.org//DTD Mapper 3.0//EN"" ""http://mybatis.org/dtd/mybatis-3-mapper.dtd"">"
+            xmlFile.WriteLine "<mapper namespace=""YourNamespace." & tableName & """>"
+            xmlFile.WriteLine "    <resultMap id=""BaseResultMap"" type=""YourNamespace." & tableName & """>"
+            
+            ' フィールド情報をXMLに追加
+            Do While i < UBound(lines) And Not InStr(lines(i), ");") > 0
+                If InStr(lines(i), "VARCHAR") > 0 Or InStr(lines(i), "INT") > 0 Then
+                    fieldName = ExtractFieldName(lines(i))
+                    fieldType = MapSQLTypeToJavaType(ExtractFieldType(lines(i)))
+                    xmlFile.WriteLine "        <result column=""" & fieldName & """ property=""" & fieldName & """ jdbcType=""" & fieldType & """ />"
+                End If
+                i = i + 1
+            Loop
+            
+            ' XMLファイルのフッターを記述
+            xmlFile.WriteLine "    </resultMap>"
+            xmlFile.WriteLine "</mapper>"
+            
+            ' XMLファイルを閉じる
+            xmlFile.Close
+        End If
+    Next i
+    
+    MsgBox "MyBatis Mapper XMLファイルが生成されました。"
+End Sub
+
+' ファイルを読み込む関数
+Function ReadFile(filePath As String) As String
+    Dim fileContent As String
+    Dim file As Object
+    Set file = CreateObject("Scripting.FileSystemObject").OpenTextFile(filePath, 1)
+    fileContent = file.ReadAll
+    file.Close
+    ReadFile = fileContent
+End Function
+
+' テーブル名を抽出する関数
+Function ExtractTableName(createTableLine As String) As String
+    ' テーブル名を抽出するロジックを実装
+    ExtractTableName = Trim(Mid(createTableLine, InStr(createTableLine, "TABLE") + 6))
+End Function
+
+' フィールド名を抽出する関数
+Function ExtractFieldName(fieldLine As String) As String
+    ' フィールド名を抽出するロジックを実装
+    ExtractFieldName = Trim(Mid(fieldLine, InStr(fieldLine, " ") + 1))
+End Function
+
+' SQLデータ型をJavaデータ型にマッピングする関数
+Function MapSQLTypeToJavaType(sqlType As String) As String
+    Select Case sqlType
+        Case "VARCHAR", "TEXT"
+            MapSQLTypeToJavaType = "VARCHAR"
+        Case "INT", "INTEGER"
+            MapSQLTypeToJavaType = "INTEGER"
+        ' 必要に応じて他のデータ型を追加
+        Case Else
+            MapSQLTypeToJavaType = "OTHER"
+    End Select
+End Function
+注意点
+SQLのパース: 上記のVBAコードはシンプルな例で、実際のSQLの形式や内容によってはカスタマイズが必要です。
+フィールドのタイプと名前: フィールドの名前やタイプの抽出ロジックは、SQLのフォーマットに合わせて調整する必要があります。
+このアプローチにより、PostgreSQLのテーブル定義を元にMyBatisのMapper XMLファイルを自動生成することが可能です。
+
+
+
+
+
+
+
+
+
