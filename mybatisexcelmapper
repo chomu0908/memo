@@ -394,3 +394,261 @@ Function GetUpdateSetClause(pkFields As Collection) As Variant
     Next field
     GetUpdateSetClause = setClauses
 End Function
+
+
+
+
+
+
+
+
+
+
+Sub GenerateMyBatisMapperFromSQL()
+    Dim sqlFilePath As String
+    Dim outputDir As String
+    Dim sqlContent As String
+    Dim tableName As String
+    Dim primaryKeyFields As Collection
+    Dim lines As Variant
+    Dim i As Integer
+    Dim xmlFilePath As String
+    Dim xmlStream As Object
+    Dim fieldNames As Variant
+    Dim fieldValues As Variant
+    Dim updateSetClause As Variant
+    Dim primaryKeyConditions As Variant
+    
+    sqlFilePath = "C:\path\to\your\schema.sql"
+    outputDir = "C:\path\to\your\mappers\"
+    
+    ' SQLファイルの読み込み
+    sqlContent = ReadFile(sqlFilePath)
+    
+    ' 行ごとに処理
+    lines = Split(sqlContent, vbCrLf)
+    
+    ' テーブル名を探してXMLファイルを作成
+    For i = LBound(lines) To UBound(lines)
+        If InStr(lines(i), "CREATE TABLE") > 0 Then
+            tableName = ExtractTableName(lines(i))
+            Set primaryKeyFields = New Collection
+            
+            ' 次のセクションでPRIMARY KEYを探す
+            Do While i < UBound(lines) And Not InStr(lines(i), ");") > 0
+                If InStr(lines(i), "PRIMARY KEY") > 0 Then
+                    primaryKeyFields = ExtractPrimaryKeyFields(lines(i))
+                End If
+                i = i + 1
+            Loop
+            
+            ' テーブルのフィールド名、値、UPDATE SET句、PRIMARY KEY条件を取得
+            fieldNames = GetFieldNames(lines, tableName)
+            fieldValues = GetFieldValues(fieldNames)
+            updateSetClause = GetUpdateSetClause(fieldNames)
+            primaryKeyConditions = GetPrimaryKeyCondition(primaryKeyFields)
+            
+            ' XMLファイルの生成開始
+            xmlFilePath = outputDir & tableName & "_mapper.xml"
+            Set xmlStream = CreateObject("ADODB.Stream")
+            xmlStream.Charset = "UTF-8"
+            xmlStream.Open
+            
+            ' XMLファイルのヘッダーを記述
+            xmlStream.WriteText "<?xml version=""1.0"" encoding=""UTF-8"" ?>" & vbCrLf
+            xmlStream.WriteText "<!DOCTYPE mapper PUBLIC ""-//mybatis.org//DTD Mapper 3.0//EN"" ""http://mybatis.org/dtd/mybatis-3-mapper.dtd"">" & vbCrLf
+            xmlStream.WriteText "<mapper namespace=""YourNamespace." & tableName & """>" & vbCrLf
+            xmlStream.WriteText "    <resultMap id=""BaseResultMap"" type=""YourNamespace." & tableName & """>" & vbCrLf
+            
+            ' フィールド情報をXMLに追加
+            For i = LBound(fieldNames) To UBound(fieldNames)
+                xmlStream.WriteText "        <result column=""" & fieldNames(i) & """ property=""" & fieldNames(i) & """ jdbcType=""" & MapSQLTypeToJavaType(GetFieldType(lines, fieldNames(i))) & """ />" & vbCrLf
+            Next i
+            
+            ' resultMapの終了
+            xmlStream.WriteText "    </resultMap>" & vbCrLf
+            
+            ' CRUD操作の追加
+            xmlStream.WriteText "    <insert id=""insert"">" & vbCrLf
+            xmlStream.WriteText "        INSERT INTO " & tableName & vbCrLf
+            xmlStream.WriteText "        (" & vbCrLf
+            xmlStream.WriteText "            " & Join(fieldNames, vbCrLf & "            ") & vbCrLf
+            xmlStream.WriteText "        )" & vbCrLf
+            xmlStream.WriteText "        VALUES" & vbCrLf
+            xmlStream.WriteText "        (" & vbCrLf
+            xmlStream.WriteText "            " & Join(fieldValues, vbCrLf & "            , ") & vbCrLf
+            xmlStream.WriteText "        )" & vbCrLf
+            xmlStream.WriteText "    </insert>" & vbCrLf
+            
+            xmlStream.WriteText "    <select id=""selectById"" parameterType=""java.lang.Integer"" resultMap=""BaseResultMap"">" & vbCrLf
+            xmlStream.WriteText "        SELECT" & vbCrLf
+            xmlStream.WriteText "            *" & vbCrLf
+            xmlStream.WriteText "        FROM" & vbCrLf
+            xmlStream.WriteText "            " & tableName & vbCrLf
+            xmlStream.WriteText "        WHERE" & vbCrLf
+            xmlStream.WriteText "            " & Join(primaryKeyConditions, vbCrLf & "            AND ") & vbCrLf
+            xmlStream.WriteText "    </select>" & vbCrLf
+            
+            xmlStream.WriteText "    <update id=""update"">" & vbCrLf
+            xmlStream.WriteText "        UPDATE " & tableName & vbCrLf
+            xmlStream.WriteText "        SET" & vbCrLf
+            xmlStream.WriteText "            " & Join(updateSetClause, vbCrLf & "            , ") & vbCrLf
+            xmlStream.WriteText "        WHERE" & vbCrLf
+            xmlStream.WriteText "            " & Join(primaryKeyConditions, vbCrLf & "            AND ") & vbCrLf
+            xmlStream.WriteText "    </update>" & vbCrLf
+            
+            xmlStream.WriteText "    <delete id=""deleteById"" parameterType=""java.lang.Integer"">" & vbCrLf
+            xmlStream.WriteText "        DELETE FROM " & tableName & vbCrLf
+            xmlStream.WriteText "        WHERE" & vbCrLf
+            xmlStream.WriteText "            " & Join(primaryKeyConditions, vbCrLf & "            AND ") & vbCrLf
+            xmlStream.WriteText "    </delete>" & vbCrLf
+            
+            ' マッパーの終了
+            xmlStream.WriteText "</mapper>" & vbCrLf
+            
+            ' XMLファイルを閉じる
+            xmlStream.SaveToFile xmlFilePath, 2 ' 2 = adSaveCreateOverWrite
+            xmlStream.Close
+        End If
+    Next i
+    
+    MsgBox "MyBatis Mapper XMLファイルが生成されました。"
+End Sub
+
+' ファイルを読み込む関数
+Function ReadFile(filePath As String) As String
+    Dim fileContent As String
+    Dim fileStream As Object
+    Set fileStream = CreateObject("ADODB.Stream")
+    fileStream.Charset = "UTF-8"
+    fileStream.Open
+    fileStream.LoadFromFile filePath
+    fileContent = fileStream.ReadText
+    fileStream.Close
+    ReadFile = fileContent
+End Function
+
+' テーブル名を抽出する関数
+Function ExtractTableName(createTableLine As String) As String
+    ExtractTableName = Trim(Mid(createTableLine, InStr(createTableLine, "TABLE") + 6))
+End Function
+
+' フィールド名を抽出する関数
+Function ExtractFieldName(fieldLine As String) As String
+    ExtractFieldName = Trim(Split(fieldLine, " ")(1))
+End Function
+
+' PRIMARY KEYフィールドを抽出する関数
+Function ExtractPrimaryKeyFields(pkLine As String) As Collection
+    Dim pkFields As Collection
+    Dim pkField As Variant
+    Dim fields As Variant
+    
+    Set pkFields = New Collection
+    pkLine = Replace(pkLine, "PRIMARY KEY (", "")
+    pkLine = Replace(pkLine, ")", "")
+    fields = Split(pkLine, ",")
+    
+    For Each pkField In fields
+        pkFields.Add Trim(pkField)
+    Next pkField
+    
+    Set ExtractPrimaryKeyFields = pkFields
+End Function
+
+' フィールドがPRIMARY KEYかを判定する関数
+Function IsPrimaryKeyField(fieldName As String, pkFields As Collection) As Boolean
+    Dim pkField As Variant
+    
+    For Each pkField In pkFields
+        If fieldName = pkField Then
+            IsPrimaryKeyField = True
+            Exit Function
+        End If
+    Next pkField
+    
+    IsPrimaryKeyField = False
+End Function
+
+' SQLデータ型をJavaデータ型にマッピングする関数
+Function MapSQLTypeToJavaType(sqlType As String) As String
+    Select Case sqlType
+        Case "VARCHAR", "TEXT"
+            MapSQLTypeToJavaType = "VARCHAR"
+        Case "INT", "INTEGER"
+            MapSQLTypeToJavaType = "INTEGER"
+        ' 必要に応じて追加
+        Case Else
+            MapSQLTypeToJavaType = "VARCHAR"
+    End Select
+End Function
+
+' テーブル名に基づいてフィールド名を取得する関数
+Function GetFieldNames(lines As Variant, tableName As String) As Variant
+    Dim fieldNames As Collection
+    Dim fieldName As Variant
+    Dim i As Integer
+    Dim startLine As Integer
+    
+    Set fieldNames = New Collection
+    
+    ' テーブルのCREATE TABLE定義からフィールド名を抽出
+    For i = LBound(lines) To UBound(lines)
+        If InStr(lines(i), "CREATE TABLE " & tableName) > 0 Then
+            startLine = i
+            Exit For
+        End If
+    Next i
+    
+    ' CREATE TABLEの定義が終わるまでフィールド名を収集
+    For i = startLine + 1 To UBound(lines)
+        If InStr(lines(i), ");") > 0 Then Exit For
+        If InStr(lines(i), "VARCHAR") > 0 Or InStr(lines(i), "INT") > 0 Then
+            fieldName = ExtractFieldName(lines(i))
+            fieldNames.Add fieldName
+        End If
+    Next i
+    
+    GetFieldNames = fieldNames.ToArray
+End Function
+
+' フィールド値リストを取得する関数
+Function GetFieldValues(fieldNames As Variant) As Variant
+    Dim fieldValues() As String
+    Dim i As Integer
+    
+    ReDim fieldValues(LBound(fieldNames) To UBound(fieldNames))
+    
+    For i = LBound(fieldNames) To UBound(fieldNames)
+        fieldValues(i) = "#{" & fieldNames(i) & "}"
+    Next i
+    
+    GetFieldValues = fieldValues
+End Function
+
+' 更新SET句を取得する関数
+Function GetUpdateSetClause(fieldNames As Variant) As Variant
+    Dim updateSetClause() As String
+    Dim i As Integer
+    
+    ReDim updateSetClause(LBound(fieldNames) To UBound(fieldNames))
+    
+    For i = LBound(fieldNames) To UBound(fieldNames)
+        updateSetClause(i) = fieldNames(i) & " = #{" & fieldNames(i) & "}"
+    Next i
+    
+    GetUpdateSetClause = updateSetClause
+End Function
+
+' 主キー条件を取得する関数
+Function GetPrimaryKeyCondition(primaryKeyFields As Collection) As Variant
+    Dim conditions() As String
+    Dim i As Integer
+    ReDim conditions(primaryKeyFields.Count - 1)
+    
+    For i = 1 To primaryKeyFields.Count
+        conditions(i - 1) = primaryKeyFields(i) & " = #{" & primaryKeyFields(i) & "}"
+    Next i
+    
+    GetPrimaryKeyCondition = conditions
+End Function
