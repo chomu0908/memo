@@ -222,3 +222,109 @@ SQLのパース: 上記のVBAコードはシンプルな例で、実際のSQLの
 
 
 
+
+
+
+
+
+Sub GenerateMyBatisMapperFromSQL()
+    Dim sqlFilePath As String
+    Dim outputDir As String
+    Dim sqlContent As String
+    Dim tableName As String
+    Dim fieldName As String
+    Dim fieldType As String
+    Dim lines As Variant
+    Dim line As Variant
+    Dim xmlFilePath As String
+    Dim xmlStream As Object
+    Dim i As Integer
+    
+    sqlFilePath = "C:\path\to\your\schema.sql"
+    outputDir = "C:\path\to\your\mappers\"
+    
+    ' SQLファイルの読み込み
+    sqlContent = ReadFile(sqlFilePath)
+    
+    ' 行ごとに処理
+    lines = Split(sqlContent, vbCrLf)
+    
+    ' テーブル名を探してXMLファイルを作成
+    For i = LBound(lines) To UBound(lines)
+        If InStr(lines(i), "CREATE TABLE") > 0 Then
+            tableName = ExtractTableName(lines(i))
+            xmlFilePath = outputDir & tableName & "_mapper.xml"
+            
+            ' ADODB.Streamを使ってXMLファイルを書き込み
+            Set xmlStream = CreateObject("ADODB.Stream")
+            xmlStream.Charset = "UTF-8"
+            xmlStream.Open
+            
+            ' XMLファイルのヘッダーを記述
+            xmlStream.WriteText "<?xml version=""1.0"" encoding=""UTF-8"" ?>"
+            xmlStream.WriteText "<!DOCTYPE mapper PUBLIC ""-//mybatis.org//DTD Mapper 3.0//EN"" ""http://mybatis.org/dtd/mybatis-3-mapper.dtd"">"
+            xmlStream.WriteText "<mapper namespace=""YourNamespace." & tableName & """>"
+            xmlStream.WriteText "    <resultMap id=""BaseResultMap"" type=""YourNamespace." & tableName & """>"
+            
+            ' フィールド情報をXMLに追加
+            Do While i < UBound(lines) And Not InStr(lines(i), ");") > 0
+                If InStr(lines(i), "VARCHAR") > 0 Or InStr(lines(i), "INT") > 0 Then
+                    fieldName = ExtractFieldName(lines(i))
+                    fieldType = MapSQLTypeToJavaType(ExtractFieldType(lines(i)))
+                    xmlStream.WriteText "        <result column=""" & fieldName & """ property=""" & fieldName & """ jdbcType=""" & fieldType & """ />"
+                End If
+                i = i + 1
+            Loop
+            
+            ' XMLファイルのフッターを記述
+            xmlStream.WriteText "    </resultMap>"
+            xmlStream.WriteText "</mapper>"
+            
+            ' XMLファイルを閉じる
+            xmlStream.SaveToFile xmlFilePath, 2 ' 2 = adSaveCreateOverWrite
+            xmlStream.Close
+        End If
+    Next i
+    
+    MsgBox "MyBatis Mapper XMLファイルが生成されました。"
+End Sub
+
+' ファイルを読み込む関数
+Function ReadFile(filePath As String) As String
+    Dim fileContent As String
+    Dim fileStream As Object
+    Set fileStream = CreateObject("ADODB.Stream")
+    fileStream.Charset = "UTF-8"
+    fileStream.Open
+    fileStream.LoadFromFile filePath
+    fileContent = fileStream.ReadText
+    fileStream.Close
+    ReadFile = fileContent
+End Function
+
+' テーブル名を抽出する関数
+Function ExtractTableName(createTableLine As String) As String
+    ' テーブル名を抽出するロジックを実装
+    ExtractTableName = Trim(Mid(createTableLine, InStr(createTableLine, "TABLE") + 6))
+End Function
+
+' フィールド名を抽出する関数
+Function ExtractFieldName(fieldLine As String) As String
+    ' フィールド名を抽出するロジックを実装
+    ExtractFieldName = Trim(Mid(fieldLine, InStr(fieldLine, " ") + 1))
+End Function
+
+' SQLデータ型をJavaデータ型にマッピングする関数
+Function MapSQLTypeToJavaType(sqlType As String) As String
+    Select Case sqlType
+        Case "VARCHAR", "TEXT"
+            MapSQLTypeToJavaType = "VARCHAR"
+        Case "INT", "INTEGER"
+            MapSQLTypeToJavaType = "INTEGER"
+        ' 必要に応じて他のデータ型を追加
+        Case Else
+            MapSQLTypeToJavaType = "OTHER"
+    End Select
+End Function
+
+
