@@ -18,7 +18,7 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
     sqlContent = ReadSQLFile("C:\path\to\your\sqlfile.sql")
     
     ' サービスファイルの生成開始
-    serviceFilePath = "C:\path\to\your\output\ServiceClasses.java"
+    serviceFilePath = "C:\path\to\your\output\YourService.java"
     Set serviceStream = CreateObject("ADODB.Stream")
     serviceStream.Charset = "UTF-8"
     serviceStream.Open
@@ -28,6 +28,8 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
     serviceStream.WriteText "import java.util.List;" & vbCrLf
     serviceStream.WriteText "import org.springframework.beans.factory.annotation.Autowired;" & vbCrLf
     serviceStream.WriteText "import org.springframework.stereotype.Service;" & vbCrLf & vbCrLf
+    serviceStream.WriteText "@Service" & vbCrLf
+    serviceStream.WriteText "public class YourService {" & vbCrLf & vbCrLf
     
     ' 行ごとに処理
     lines = Split(sqlContent, vbCrLf)
@@ -82,12 +84,9 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
             interfaceStream.Close
             
             ' サービスクラスの内容を記述
-            serviceStream.WriteText "@Service" & vbCrLf
-            serviceStream.WriteText "public class " & tableName & "Service {" & vbCrLf
             serviceStream.WriteText "    @Autowired" & vbCrLf
             serviceStream.WriteText "    private " & tableName & "Mapper " & LCase(tableName) & "Mapper;" & vbCrLf & vbCrLf
             
-            ' サービスメソッドの記述
             ' insertメソッド
             serviceStream.WriteText "    public void insert" & tableName & "(" & tableName & " entity) {" & vbCrLf
             serviceStream.WriteText "        " & LCase(tableName) & "Mapper.insert(entity);" & vbCrLf
@@ -106,11 +105,12 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
             ' deleteByIdメソッド
             serviceStream.WriteText "    public void delete" & tableName & "ById(" & selectMethodParams & ") {" & vbCrLf
             serviceStream.WriteText "        " & LCase(tableName) & "Mapper.deleteById(" & JoinPrimaryKeys(primaryKeyFields) & ");" & vbCrLf
-            serviceStream.WriteText "    }" & vbCrLf
-            
-            serviceStream.WriteText "}" & vbCrLf & vbCrLf
+            serviceStream.WriteText "    }" & vbCrLf & vbCrLf
         End If
     Next i
+    
+    ' サービスクラスの終了部分を記述
+    serviceStream.WriteText "}" & vbCrLf
     
     ' サービスファイルを保存して閉じる
     serviceStream.SaveToFile serviceFilePath, 2 ' 2 = adSaveCreateOverWrite
@@ -118,32 +118,3 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
     
     MsgBox "MyBatis Mapperインターフェースとサービスクラスが生成されました。"
 End Sub
-
-' PRIMARY KEYに基づいてメソッドの引数リストを生成する関数
-Function CreateMethodParams(primaryKeyFields As Collection) As String
-    Dim params() As String
-    Dim i As Integer
-    
-    ReDim params(primaryKeyFields.Count - 1)
-    
-    For i = 1 To primaryKeyFields.Count
-        ' 必要に応じて型の判別を行い、適切なJavaの型を設定します。ここでは仮にすべてIntegerとしています。
-        params(i - 1) = "Integer " & primaryKeyFields(i)
-    Next i
-    
-    CreateMethodParams = Join(params, ", ")
-End Function
-
-' PRIMARY KEYフィールドをカンマで結合する関数
-Function JoinPrimaryKeys(primaryKeyFields As Collection) As String
-    Dim keys() As String
-    Dim i As Integer
-    
-    ReDim keys(primaryKeyFields.Count - 1)
-    
-    For i = 1 To primaryKeyFields.Count
-        keys(i - 1) = primaryKeyFields(i)
-    Next i
-    
-    JoinPrimaryKeys = Join(keys, ", ")
-End Function
