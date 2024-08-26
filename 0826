@@ -13,6 +13,8 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
     Dim primaryKeyConditions As String
     Dim sqlContent As String
     Dim i As Integer
+    Dim importStatements As Collection
+    Dim tableNameLowerCase As String
     
     ' SQLファイルの内容を読み込む
     sqlContent = ReadSQLFile("C:\path\to\your\sqlfile.sql")
@@ -23,13 +25,16 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
     serviceStream.Charset = "UTF-8"
     serviceStream.Open
     
+    ' インポート文を管理するためのCollectionを用意
+    Set importStatements = New Collection
+    
     ' サービスファイルの先頭部分を記述
     serviceStream.WriteText "package YourNamespace;" & vbCrLf & vbCrLf
+    
+    ' 共通のインポート文
     serviceStream.WriteText "import java.util.List;" & vbCrLf
     serviceStream.WriteText "import org.springframework.beans.factory.annotation.Autowired;" & vbCrLf
     serviceStream.WriteText "import org.springframework.stereotype.Service;" & vbCrLf & vbCrLf
-    serviceStream.WriteText "@Service" & vbCrLf
-    serviceStream.WriteText "public class YourService {" & vbCrLf & vbCrLf
     
     ' 行ごとに処理
     lines = Split(sqlContent, vbCrLf)
@@ -37,6 +42,7 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
     For i = LBound(lines) To UBound(lines)
         If InStr(lines(i), "CREATE TABLE") > 0 Then
             tableName = ExtractTableName(lines(i))
+            tableNameLowerCase = LCase(tableName)
             Set primaryKeyFields = New Collection
             
             ' 次のセクションでPRIMARY KEYを探す
@@ -83,34 +89,45 @@ Sub GenerateMyBatisServiceAndMapperFromSQL()
             interfaceStream.SaveToFile interfaceFilePath, 2 ' 2 = adSaveCreateOverWrite
             interfaceStream.Close
             
+            ' インポート文をCollectionに追加
+            On Error Resume Next ' 重複を避けるためエラーを無視
+            importStatements.Add "import YourNamespace.mappers." & tableName & "Mapper;", "Mapper_" & tableName
+            importStatements.Add "import YourNamespace.entities." & tableName & ";", "Entity_" & tableName
+            On Error GoTo 0
+            
             ' サービスクラスの内容を記述
             serviceStream.WriteText "    @Autowired" & vbCrLf
-            serviceStream.WriteText "    private " & tableName & "Mapper " & LCase(tableName) & "Mapper;" & vbCrLf & vbCrLf
+            serviceStream.WriteText "    private " & tableName & "Mapper " & tableNameLowerCase & "Mapper;" & vbCrLf & vbCrLf
             
             ' insertメソッド
             serviceStream.WriteText "    public void insert" & tableName & "(" & tableName & " entity) {" & vbCrLf
-            serviceStream.WriteText "        " & LCase(tableName) & "Mapper.insert(entity);" & vbCrLf
+            serviceStream.WriteText "        " & tableNameLowerCase & "Mapper.insert(entity);" & vbCrLf
             serviceStream.WriteText "    }" & vbCrLf & vbCrLf
             
             ' selectByIdメソッド
             serviceStream.WriteText "    public " & tableName & " get" & tableName & "ById(" & selectMethodParams & ") {" & vbCrLf
-            serviceStream.WriteText "        return " & LCase(tableName) & "Mapper.selectById(" & JoinPrimaryKeys(primaryKeyFields) & ");" & vbCrLf
+            serviceStream.WriteText "        return " & tableNameLowerCase & "Mapper.selectById(" & JoinPrimaryKeys(primaryKeyFields) & ");" & vbCrLf
             serviceStream.WriteText "    }" & vbCrLf & vbCrLf
             
             ' updateメソッド
             serviceStream.WriteText "    public void update" & tableName & "(" & tableName & " entity) {" & vbCrLf
-            serviceStream.WriteText "        " & LCase(tableName) & "Mapper.update(entity);" & vbCrLf
+            serviceStream.WriteText "        " & tableNameLowerCase & "Mapper.update(entity);" & vbCrLf
             serviceStream.WriteText "    }" & vbCrLf & vbCrLf
             
             ' deleteByIdメソッド
             serviceStream.WriteText "    public void delete" & tableName & "ById(" & selectMethodParams & ") {" & vbCrLf
-            serviceStream.WriteText "        " & LCase(tableName) & "Mapper.deleteById(" & JoinPrimaryKeys(primaryKeyFields) & ");" & vbCrLf
+            serviceStream.WriteText "        " & tableNameLowerCase & "Mapper.deleteById(" & JoinPrimaryKeys(primaryKeyFields) & ");" & vbCrLf
             serviceStream.WriteText "    }" & vbCrLf & vbCrLf
         End If
     Next i
     
+    ' インポート文をサービスクラスの先頭に追加
+    For i = 1 To importStatements.Count
+        serviceStream.WriteText importStatements(i) & vbCrLf
+    Next i
+    
     ' サービスクラスの終了部分を記述
-    serviceStream.WriteText "}" & vbCrLf
+    serviceStream.WriteText vbCrLf & "}" & vbCrLf
     
     ' サービスファイルを保存して閉じる
     serviceStream.SaveToFile serviceFilePath, 2 ' 2 = adSaveCreateOverWrite
