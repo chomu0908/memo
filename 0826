@@ -1,0 +1,149 @@
+Sub GenerateMyBatisServiceAndMapperFromSQL()
+    Dim lines() As String
+    Dim tableName As String
+    Dim primaryKeyFields As Collection
+    Dim interfaceFilePath As String
+    Dim serviceFilePath As String
+    Dim interfaceStream As Object
+    Dim serviceStream As Object
+    Dim selectMethodParams As String
+    Dim fieldNames As Collection
+    Dim fieldValues As String
+    Dim updateSetClause As String
+    Dim primaryKeyConditions As String
+    Dim sqlContent As String
+    Dim i As Integer
+    
+    ' SQLファイルの内容を読み込む
+    sqlContent = ReadSQLFile("C:\path\to\your\sqlfile.sql")
+    
+    ' サービスファイルの生成開始
+    serviceFilePath = "C:\path\to\your\output\ServiceClasses.java"
+    Set serviceStream = CreateObject("ADODB.Stream")
+    serviceStream.Charset = "UTF-8"
+    serviceStream.Open
+    
+    ' サービスファイルの先頭部分を記述
+    serviceStream.WriteText "package YourNamespace;" & vbCrLf & vbCrLf
+    serviceStream.WriteText "import java.util.List;" & vbCrLf
+    serviceStream.WriteText "import org.springframework.beans.factory.annotation.Autowired;" & vbCrLf
+    serviceStream.WriteText "import org.springframework.stereotype.Service;" & vbCrLf & vbCrLf
+    
+    ' 行ごとに処理
+    lines = Split(sqlContent, vbCrLf)
+    
+    For i = LBound(lines) To UBound(lines)
+        If InStr(lines(i), "CREATE TABLE") > 0 Then
+            tableName = ExtractTableName(lines(i))
+            Set primaryKeyFields = New Collection
+            
+            ' 次のセクションでPRIMARY KEYを探す
+            Do While i < UBound(lines) And Not InStr(lines(i), ");") > 0
+                If InStr(lines(i), "PRIMARY KEY") > 0 Then
+                    primaryKeyFields = ExtractPrimaryKeyFields(lines(i))
+                End If
+                i = i + 1
+            Loop
+            
+            ' フィールド名、値、UPDATE SET句、PRIMARY KEY条件を取得
+            fieldNames = GetFieldNames(lines, tableName)
+            fieldValues = GetFieldValues(fieldNames)
+            updateSetClause = GetUpdateSetClause(fieldNames)
+            primaryKeyConditions = GetPrimaryKeyCondition(primaryKeyFields)
+            
+            ' Mapperインターフェースファイルの生成開始
+            interfaceFilePath = "C:\path\to\your\output\mappers\" & tableName & "Mapper.java"
+            Set interfaceStream = CreateObject("ADODB.Stream")
+            interfaceStream.Charset = "UTF-8"
+            interfaceStream.Open
+            
+            ' Mapperインターフェースの内容を記述
+            interfaceStream.WriteText "package YourNamespace.mappers;" & vbCrLf & vbCrLf
+            interfaceStream.WriteText "import java.util.List;" & vbCrLf & vbCrLf
+            interfaceStream.WriteText "public interface " & tableName & "Mapper {" & vbCrLf
+            
+            ' insertメソッド
+            interfaceStream.WriteText "    void insert(" & tableName & " entity);" & vbCrLf
+            
+            ' selectByIdメソッド
+            selectMethodParams = CreateMethodParams(primaryKeyFields)
+            interfaceStream.WriteText "    " & tableName & " selectById(" & selectMethodParams & ");" & vbCrLf
+            
+            ' updateメソッド
+            interfaceStream.WriteText "    void update(" & tableName & " entity);" & vbCrLf
+            
+            ' deleteByIdメソッド
+            interfaceStream.WriteText "    void deleteById(" & selectMethodParams & ");" & vbCrLf
+            
+            interfaceStream.WriteText "}" & vbCrLf
+            
+            ' Mapperインターフェースファイルを保存して閉じる
+            interfaceStream.SaveToFile interfaceFilePath, 2 ' 2 = adSaveCreateOverWrite
+            interfaceStream.Close
+            
+            ' サービスクラスの内容を記述
+            serviceStream.WriteText "@Service" & vbCrLf
+            serviceStream.WriteText "public class " & tableName & "Service {" & vbCrLf
+            serviceStream.WriteText "    @Autowired" & vbCrLf
+            serviceStream.WriteText "    private " & tableName & "Mapper " & LCase(tableName) & "Mapper;" & vbCrLf & vbCrLf
+            
+            ' サービスメソッドの記述
+            ' insertメソッド
+            serviceStream.WriteText "    public void insert" & tableName & "(" & tableName & " entity) {" & vbCrLf
+            serviceStream.WriteText "        " & LCase(tableName) & "Mapper.insert(entity);" & vbCrLf
+            serviceStream.WriteText "    }" & vbCrLf & vbCrLf
+            
+            ' selectByIdメソッド
+            serviceStream.WriteText "    public " & tableName & " get" & tableName & "ById(" & selectMethodParams & ") {" & vbCrLf
+            serviceStream.WriteText "        return " & LCase(tableName) & "Mapper.selectById(" & JoinPrimaryKeys(primaryKeyFields) & ");" & vbCrLf
+            serviceStream.WriteText "    }" & vbCrLf & vbCrLf
+            
+            ' updateメソッド
+            serviceStream.WriteText "    public void update" & tableName & "(" & tableName & " entity) {" & vbCrLf
+            serviceStream.WriteText "        " & LCase(tableName) & "Mapper.update(entity);" & vbCrLf
+            serviceStream.WriteText "    }" & vbCrLf & vbCrLf
+            
+            ' deleteByIdメソッド
+            serviceStream.WriteText "    public void delete" & tableName & "ById(" & selectMethodParams & ") {" & vbCrLf
+            serviceStream.WriteText "        " & LCase(tableName) & "Mapper.deleteById(" & JoinPrimaryKeys(primaryKeyFields) & ");" & vbCrLf
+            serviceStream.WriteText "    }" & vbCrLf
+            
+            serviceStream.WriteText "}" & vbCrLf & vbCrLf
+        End If
+    Next i
+    
+    ' サービスファイルを保存して閉じる
+    serviceStream.SaveToFile serviceFilePath, 2 ' 2 = adSaveCreateOverWrite
+    serviceStream.Close
+    
+    MsgBox "MyBatis Mapperインターフェースとサービスクラスが生成されました。"
+End Sub
+
+' PRIMARY KEYに基づいてメソッドの引数リストを生成する関数
+Function CreateMethodParams(primaryKeyFields As Collection) As String
+    Dim params() As String
+    Dim i As Integer
+    
+    ReDim params(primaryKeyFields.Count - 1)
+    
+    For i = 1 To primaryKeyFields.Count
+        ' 必要に応じて型の判別を行い、適切なJavaの型を設定します。ここでは仮にすべてIntegerとしています。
+        params(i - 1) = "Integer " & primaryKeyFields(i)
+    Next i
+    
+    CreateMethodParams = Join(params, ", ")
+End Function
+
+' PRIMARY KEYフィールドをカンマで結合する関数
+Function JoinPrimaryKeys(primaryKeyFields As Collection) As String
+    Dim keys() As String
+    Dim i As Integer
+    
+    ReDim keys(primaryKeyFields.Count - 1)
+    
+    For i = 1 To primaryKeyFields.Count
+        keys(i - 1) = primaryKeyFields(i)
+    Next i
+    
+    JoinPrimaryKeys = Join(keys, ", ")
+End Function
