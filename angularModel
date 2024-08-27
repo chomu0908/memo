@@ -108,6 +108,52 @@ DRY原則: shared/やcore/に共通ロジックやコンポーネントを配置
 
 
 
+
+Shared Moduleの作成:
+
+まず、共有するコンポーネントやディレクティブ、パイプを集めたモジュールを作成します。
+例えば、shared.module.tsというファイルを作成し、以下のように定義します。
+typescript
+コードをコピーする
+// shared.module.ts
+import { NgModule } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ComponentA } from './component-a/component-a.component';
+import { ComponentB } from './component-b/component-b.component';
+
+@NgModule({
+  declarations: [
+    ComponentA,  // ここに共通して使いたいコンポーネントを宣言します
+    ComponentB
+  ],
+  imports: [
+    CommonModule  // 必要に応じて他のモジュールもインポート可能
+  ],
+  exports: [
+    ComponentA,  // ここでエクスポートすると、他のモジュールで使えるようになります
+    ComponentB
+  ]
+})
+export class SharedModule { }
+Shared Moduleの使用:
+
+SharedModuleをインポートすることで、エクスポートされたすべてのコンポーネントが使用可能になります。
+例えば、feature.module.tsで使用する場合、以下のようにインポートします。
+typescript
+コードをコピーする
+// feature.module.ts
+import { NgModule } from '@angular/core';
+import { SharedModule } from '../shared/shared.module';
+
+@NgModule({
+  imports: [
+    SharedModule,  // SharedModuleをインポート
+  ],
+})
+export class FeatureModule { }
+これにより、FeatureModule内でComponentAやComponentBを簡単に使えるようになります。
+
+
 あなた:
 表示されるコンポーネントとかはどこにあたる？
 ChatGPT:
