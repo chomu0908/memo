@@ -1,0 +1,143 @@
+サービスの作成
+入れ子構造のダミーデータを返すサービスを作成します。
+
+typescript
+コードをコピーする
+import { Injectable } from '@angular/core';
+import { of } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class DataService {
+
+  getData() {
+    return of({
+      items: [
+        {
+          category: 'Category 1',
+          products: [
+            { name: 'Item 1', quantity: 10, price: 100 },
+            { name: 'Item 2', quantity: 5, price: 50 }
+          ]
+        },
+        {
+          category: 'Category 2',
+          products: [
+            { name: 'Item 3', quantity: 20, price: 200 },
+            { name: 'Item 4', quantity: 15, price: 150 }
+          ]
+        }
+      ]
+    });
+  }
+}
+2. コンポーネントの作成
+入れ子構造のJSONデータをFormArrayとFormGroupを使って管理するコンポーネントを作成します。
+
+typescript
+コードをコピーする
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, FormArray } from '@angular/forms';
+import { DataService } from '../data.service';
+
+@Component({
+  selector: 'app-data-form',
+  templateUrl: './data-form.component.html'
+})
+export class DataFormComponent implements OnInit {
+  myForm: FormGroup;
+  displayedColumns: string[] = ['name', 'quantity', 'price'];
+
+  constructor(private formBuilder: FormBuilder, private dataService: DataService) {
+    this.myForm = this.formBuilder.group({
+      items: this.formBuilder.array([])  // FormArrayを初期化
+    });
+  }
+
+  ngOnInit(): void {
+    this.dataService.getData().subscribe(response => {
+      this.setItems(response.items);  // JSONデータをFormArrayにバインド
+    });
+  }
+
+  // FormArrayにデータを設定するメソッド
+  setItems(items: any[]): void {
+    const itemsArray = this.myForm.get('items') as FormArray;
+    items.forEach(item => {
+      itemsArray.push(this.createCategory(item));
+    });
+  }
+
+  // 各カテゴリのフォームグループを作成するメソッド
+  createCategory(data: any): FormGroup {
+    return this.formBuilder.group({
+      category: [data.category],
+      products: this.formBuilder.array(data.products.map(product => this.createProduct(product)))
+    });
+  }
+
+  // 各製品のフォームグループを作成するメソッド
+  createProduct(data: any): FormGroup {
+    return this.formBuilder.group({
+      name: [data.name],
+      quantity: [data.quantity],
+      price: [data.price]
+    });
+  }
+
+  // FormArrayを取得するためのヘルパーメソッド
+  get items(): FormArray {
+    return this.myForm.get('items') as FormArray;
+  }
+}
+3. テンプレートの作成
+a. 入れ子のFormArrayとFormGroupを表示するテンプレート
+html
+コードをコピーする
+<form [formGroup]="myForm">
+  <div formArrayName="items">
+    <div *ngFor="let category of items.controls; let i = index" [formGroupName]="i">
+      <h3>{{ category.get('category').value }}</h3>
+      <table mat-table [dataSource]="category.get('products').controls" formArrayName="products" class="mat-elevation-z8">
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef> Name </th>
+          <td mat-cell *matCellDef="let product; let j = index" [formGroupName]="j">
+            <input matInput formControlName="name">
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="quantity">
+          <th mat-header-cell *matHeaderCellDef> Quantity </th>
+          <td mat-cell *matCellDef="let product; let j = index" [formGroupName]="j">
+            <input matInput formControlName="quantity" type="number">
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="price">
+          <th mat-header-cell *matHeaderCellDef> Price </th>
+          <td mat-cell *matCellDef="let product; let j = index" [formGroupName]="j">
+            <input matInput formControlName="price" type="number">
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      </table>
+    </div>
+  </div>
+</form>
+4. まとめ
+サービスの作成: 入れ子構造のダミーデータを返すサービスを作成。将来的にはREST APIからのデータ取得に切り替え。
+コンポーネントの作成: FormArrayとFormGroupを使って入れ子のJSONデータを管理。createCategoryメソッドでカテゴリを、createProductメソッドで製品をフォームグループに変換。
+テンプレートの作成: MatTableを使って入れ子のデータを表示。各カテゴリとその中の製品を表示する。
+この方法で、入れ子の構造を持つJSONデータをFormArrayとMatTableを用いて効果的に表示することができます。将来的にREST APIからデータを取得する際も、この構造を基にサービスを実装すれば、問題なく対応できます。
+
+
+
+
+
+
+
+
+
