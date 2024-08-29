@@ -141,3 +141,144 @@ html
 
 
 
+それでは、HttpClientを使ってassetsフォルダに用意したダミーデータを取得し、それをフォームにpatchValueで適用する方法をご説明します。今回は、テーブルの中にinputを作成しない形で、データを表示するシンプルな方法を紹介します。
+
+1. ダミーデータの準備
+まず、src/assets/フォルダにdata.jsonというファイルを作成し、以下のようにデータを用意します。
+
+data.json
+json
+コードをコピーする
+{
+  "category": "Category 1",
+  "products": [
+    { "name": "Item 1", "quantity": 10, "price": 100 },
+    { "name": "Item 2", "quantity": 5, "price": 50 }
+  ]
+}
+2. HttpClientModuleのインポート
+HttpClientを使うために、アプリケーションのAppModuleにHttpClientModuleをインポートします。
+
+typescript
+コードをコピーする
+import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { HttpClientModule } from '@angular/common/http';
+import { AppComponent } from './app.component';
+import { DataFormComponent } from './data-form/data-form.component';
+
+@NgModule({
+  declarations: [
+    AppComponent,
+    DataFormComponent
+  ],
+  imports: [
+    BrowserModule,
+    HttpClientModule  // HttpClientModuleをインポート
+  ],
+  providers: [],
+  bootstrap: [AppComponent]
+})
+export class AppModule { }
+3. サービスの作成
+次に、assets/data.jsonからデータを取得するためのサービスを作成します。
+
+typescript
+コードをコピーする
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class DataService {
+
+  constructor(private http: HttpClient) { }
+
+  getCategoryData(): Observable<any> {
+    return this.http.get('/assets/data.json');
+  }
+}
+4. コンポーネントの作成
+取得したデータをフォームに適用するコンポーネントを作成します。
+
+typescript
+コードをコピーする
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, FormArray } from '@angular/forms';
+import { DataService } from '../data.service';
+
+@Component({
+  selector: 'app-data-form',
+  templateUrl: './data-form.component.html'
+})
+export class DataFormComponent implements OnInit {
+  myForm: FormGroup;
+
+  constructor(private formBuilder: FormBuilder, private dataService: DataService) {
+    this.myForm = this.formBuilder.group({
+      category: [''],
+      products: this.formBuilder.array([])
+    });
+  }
+
+  ngOnInit(): void {
+    this.dataService.getCategoryData().subscribe(response => {
+      this.patchCategoryData(response);  // JSONデータをフォームに反映
+    });
+  }
+
+  patchCategoryData(data: any): void {
+    // フォームにカテゴリ名を設定
+    this.myForm.patchValue({
+      category: data.category
+    });
+
+    // 製品リストを設定
+    const productsArray = this.myForm.get('products') as FormArray;
+    productsArray.clear();  // 既存のデータをクリア
+
+    data.products.forEach(product => {
+      productsArray.push(this.formBuilder.group({
+        name: [product.name],
+        quantity: [product.quantity],
+        price: [product.price]
+      }));
+    });
+  }
+
+  get products(): FormArray {
+    return this.myForm.get('products') as FormArray;
+  }
+}
+5. テンプレートの作成
+最後に、フォームデータを表示するテンプレートを作成します。ここでは、テーブルの中にinputを作らず、単純にデータを表示する形にします。
+
+html
+コードをコピーする
+<form [formGroup]="myForm">
+  <label>Category: {{ myForm.get('category')?.value }}</label>
+
+  <div *ngFor="let product of products.controls">
+    <p>Name: {{ product.get('name')?.value }}</p>
+    <p>Quantity: {{ product.get('quantity')?.value }}</p>
+    <p>Price: {{ product.get('price')?.value }}</p>
+  </div>
+</form>
+6. まとめ
+ダミーデータの準備: assetsフォルダにdata.jsonファイルを用意。
+HttpClientModuleのインポート: HttpClientを使うためにAppModuleにHttpClientModuleをインポート。
+サービスの作成: HttpClientを使って、assets/data.jsonからデータを取得するサービスを作成。
+コンポーネントの作成: 取得したデータをフォームにpatchValueで適用。
+テンプレートの作成: フォームに設定されたデータを表示。
+この手順に従えば、assetsフォルダに用意したJSONデータを取得し、それをフォームに反映させることができます。テーブル内にinputを配置せずにデータを表示することも可能です。
+
+
+
+
+
+
+
+
+
