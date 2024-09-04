@@ -435,3 +435,17 @@ FormArrayの値をdataSourceにセットし、mat-tableをリフレッシュし�
 
 
 
+dialogRef.afterClosed().subscribe(result => {
+  if (result) {
+    const formArray = this.myFormGroup.get('formArrayName') as FormArray;
+
+    // 子ダイアログから受け取ったFormGroup全体でデータを更新
+    formArray.clear();
+    result.nestedArray.forEach(item => {
+      formArray.push(this.fb.group(item));
+    });
+
+    // MatTableをリフレッシュ
+    this.dataSource = formArray.value;
+  }
+});
