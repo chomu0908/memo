@@ -214,3 +214,56 @@ MyBatisのbatchモードを使うことで、SQLの発行回数を減らし、�
 
 
 ChatGPT の回答は必ずしも正しいとは限りません。重要な情報は確認するようにしてください。
+
+
+
+
+
+
+
+
+@Service
+public class YourService {
+
+    @Autowired
+    private SqlSessionFactory sqlSessionFactory;
+
+    @Autowired
+    private ParentMapper parentMapper;
+
+    @Autowired
+    private ChildMapper childMapper;
+
+    @Transactional
+    public void insertParentAndChildren(ParentObject parent, List<ChildObject> childList) {
+        try (SqlSession session = sqlSessionFactory.openSession(ExecutorType.BATCH)) {
+            // 複数のMapperを取得
+            ParentMapper parentMapper = session.getMapper(ParentMapper.class);
+            ChildMapper childMapper = session.getMapper(ChildMapper.class);
+
+            // 1. 親IDを生成する（SELECT文はすぐ実行される）
+            String maxParentId = parentMapper.getMaxParentId();  // ParentMapperのメソッド
+            String newParentId = generateNextId(maxParentId);
+
+            // 2. 親データをバッチに追加
+            parentMapper.insertParent(newParentId, parent.getOtherValue());
+
+            // 3. 子データをバッチに追加（ChildMapperを使用）
+            for (ChildObject child : childList) {
+                child.setParentId(newParentId);
+                childMapper.insertChild(child.getParentId(), child.getOtherValue());
+            }
+
+            // 4. バッチに蓄積されたSQLをまとめてコミット
+            session.commit();
+        } catch (Exception e) {
+            throw new RuntimeException("Batch insertion failed", e);
+        }
+    }
+
+    private String generateNextId(String currentMaxId) {
+        int numericPart = Integer.parseInt(currentMaxId);
+        numericPart += 1;
+        return String.format("%010d", numericPart);  // 10桁のゼロ埋め
+    }
+}
