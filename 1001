@@ -1,0 +1,122 @@
+1. サービスの実装
+ここでは、複数のコードテーブルからデータを取得し、それをキャッシュして再利用する CodeService を作成します。
+
+code.service.ts
+typescript
+コードをコピーする
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, BehaviorSubject } from 'rxjs';
+import { tap } from 'rxjs/operators';
+
+// コードのモデル
+interface Code {
+  id: string;
+  label: string;
+}
+
+@Injectable({
+  providedIn: 'root'
+})
+export class CodeService {
+  // テーブルごとにコードをキャッシュするマップ
+  private codeCache = new Map<string, BehaviorSubject<Code[]>>();
+
+  constructor(private http: HttpClient) {}
+
+  // 任意のコードテーブルからデータを取得してキャッシュ
+  loadCodes(tableName: string): Observable<Code[]> {
+    if (!this.codeCache.has(tableName)) {
+      this.codeCache.set(tableName, new BehaviorSubject<Code[]>([]));
+      // APIからコードデータを取得
+      return this.http.get<Code[]>(`/api/${tableName}`).pipe(
+        tap(codes => this.codeCache.get(tableName)?.next(codes))  // キャッシュに保存
+      );
+    }
+    // すでにキャッシュがある場合は何もしない
+    return this.codeCache.get(tableName)!.asObservable();
+  }
+
+  // キャッシュされたコードデータを取得
+  getCodes(tableName: string): Observable<Code[]> {
+    return this.codeCache.get(tableName)?.asObservable() || new BehaviorSubject<Code[]>([]).asObservable();
+  }
+}
+このサービスは、コードデータをAPIから取得し、BehaviorSubject を使ってキャッシュします。コンポーネントからは、キャッシュされたデータを再利用できるように設計されています。
+
+2. カスタムパイプの実装
+次に、コードIDをラベルに変換するためのカスタムパイプを作成します。このパイプは、CodeService を利用してキャッシュされたデータを参照し、IDに対応するラベルを返します。
+
+code-label.pipe.ts
+typescript
+コードをコピーする
+import { Pipe, PipeTransform } from '@angular/core';
+import { CodeService } from './code.service';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+
+@Pipe({
+  name: 'codeLabel',
+  pure: false  // データが変わる可能性がある場合はpureをfalseに
+})
+export class CodeLabelPipe implements PipeTransform {
+
+  constructor(private codeService: CodeService) {}
+
+  // コードIDから対応するラベルを取得
+  transform(codeId: string, tableName: string): Observable<string> {
+    return this.codeService.getCodes(tableName).pipe(
+      map(codes => {
+        const code = codes.find(c => c.id === codeId);
+        return code ? code.label : 'Unknown';  // ラベルが見つからない場合は 'Unknown'
+      })
+    );
+  }
+}
+このパイプは、サービスから指定されたテーブルのデータを取得し、codeId に対応するラベルを探して返します。ラベルが見つからない場合は Unknown と表示されます。
+
+3. コンポーネントでの利用方法
+コンポーネントのテンプレートで、このカスタムパイプを使ってコードIDをラベルに変換して表示します。
+
+テンプレートの例 (component.html)
+html
+コードをコピーする
+<span>{{ codeId | codeLabel:'codeA' | async }}</span>
+codeId は例えば codeA テーブルのIDです。codeLabel パイプがこのIDをラベルに変換し、表示します。async パイプを使うことで、非同期なデータをテンプレートに自動的にバインドできます。
+
+4. まとめ
+サービスでは、複数のコードテーブルからデータを取得し、キャッシュして再利用可能にします。
+カスタムパイプは、サービスを利用してコードIDをラベルに変換し、非同期に表示します。
+テンプレートでの使用例として、コードIDを直接ラベルとして表示するために async パイプを組み合わせています。
+これにより、コードテーブルのデータを複数のコンポーネントで共有し、再利用することが可能になります。
+
+
+
+
+改善
+@Injectable({
+  providedIn: 'root'
+})
+export class CodeService {
+  private codeCache = new Map<string, BehaviorSubject<Code[]>>();
+
+  constructor(private http: HttpClient) {}
+
+  loadCodes(tableName: string): Observable<Code[]> {
+    if (!this.codeCache.has(tableName)) {
+      this.codeCache.set(tableName, new BehaviorSubject<Code[]>([]));
+      return this.http.get<Code[]>(`/api/${tableName}`).pipe(
+        tap(codes => this.codeCache.get(tableName)?.next(codes))  // キャッシュに保存
+      );
+    }
+    return this.codeCache.get(tableName)!.asObservable();
+  }
+
+  getCodes(tableName: string): Observable<Code[]> {
+    if (!this.codeCache.has(tableName)) {
+      this.codeCache.set(tableName, new BehaviorSubject<Code[]>([]));
+      this.loadCodes(tableName).subscribe();  // 初回ロード
+    }
+    return this.codeCache.get(tableName)!.asObservable();
+  }
+}
