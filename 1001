@@ -299,3 +299,95 @@ loadCodes(tableName: string): Observable<Code[]> {
   }
   return this.codeCache.get(tableName)!.asObservable();
 }
+
+
+
+
+
+
+
+
+RESTエンドポイントの設計
+コードタイプがある場合とない場合で異なるエンドポイントにするか、1つのエンドポイントでオプションのパラメーターとして扱う方法があります。
+
+方法1: パスパラメーターで分ける
+コードタイプがない場合には、パスパラメーターを指定しないエンドポイントを使用します。
+
+java
+コードをコピーする
+@RestController
+@RequestMapping("/api/codes")
+public class CodeController {
+
+    // コードタイプがある場合
+    @GetMapping("/{tableName}/{codeType}")
+    public ResponseEntity<List<Code>> getCodesByType(
+        @PathVariable String tableName,
+        @PathVariable String codeType) {
+        List<Code> codes = codeService.getCodesByType(tableName, codeType);
+        return ResponseEntity.ok(codes);
+    }
+
+    // コードタイプがない場合
+    @GetMapping("/{tableName}")
+    public ResponseEntity<List<Code>> getCodes(
+        @PathVariable String tableName) {
+        List<Code> codes = codeService.getCodes(tableName);
+        return ResponseEntity.ok(codes);
+    }
+}
+方法2: クエリパラメーターを使用
+パスパラメーターではなく、クエリパラメーターでコードタイプをオプションにして一つのエンドポイントで対応することもできます。
+
+java
+コードをコピーする
+@GetMapping("/{tableName}")
+public ResponseEntity<List<Code>> getCodes(
+    @PathVariable String tableName,
+    @RequestParam(required = false) String codeType) {
+    List<Code> codes;
+    if (codeType != null) {
+        codes = codeService.getCodesByType(tableName, codeType);
+    } else {
+        codes = codeService.getCodes(tableName);
+    }
+    return ResponseEntity.ok(codes);
+}
+codeTypeが指定されている場合はそのタイプに基づいてフィルタリングし、指定されていない場合は全てのコードを取得するようにします。
+
+2. MyBatis側のクエリ
+コードタイプがない場合とある場合でクエリも分岐させます。
+
+xml
+コードをコピーする
+<select id="getCodesByType" resultType="Code">
+    SELECT * FROM ${tableName} WHERE code_type = #{codeType}
+</select>
+
+<select id="getCodes" resultType="Code">
+    SELECT * FROM ${tableName}
+</select>
+3. Angular側の呼び出し
+Angular側では、クエリパラメーターをオプションとして設定することができます。
+
+typescript
+コードをコピーする
+getCodes(tableName: string, codeType?: string): Observable<Code[]> {
+  let url = `/api/codes/${tableName}`;
+  if (codeType) {
+    url += `?codeType=${codeType}`;
+  }
+  return this.http.get<Code[]>(url);
+}
+このようにすれば、コードタイプがある場合でもない場合でも、柔軟に対応可能です。
+
+
+
+
+
+
+
+
+
+
+ChatGPT の回答は必ずしも正しいとは限りません。重要な情報は確認するようにしてください。
