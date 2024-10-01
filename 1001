@@ -285,3 +285,17 @@ APIの設計によって、各テーブルが持つフィールドは異なる�
 
 
 ChatGPT の回答は必ずしも正しいとは限りません。重要な情報は確認するようにしてください。
+
+
+
+loadCodes(tableName: string): Observable<Code[]> {
+  if (!this.codeCache.has(tableName)) {
+    this.codeCache.set(tableName, new BehaviorSubject<Code[]>([]));
+    return this.http.get<Code[]>(`/api/codes`, {
+      params: { tableName: tableName }  // クエリパラメータとしてテーブル名を渡す
+    }).pipe(
+      tap(codes => this.codeCache.get(tableName)?.next(codes))
+    );
+  }
+  return this.codeCache.get(tableName)!.asObservable();
+}
