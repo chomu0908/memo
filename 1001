@@ -391,3 +391,74 @@ getCodes(tableName: string, codeType?: string): Observable<Code[]> {
 
 
 ChatGPT の回答は必ずしも正しいとは限りません。重要な情報は確認するようにしてください。
+
+
+
+
+改修を最小限に抑えつつ、県コードで市区町村データを取得し、他のコードテーブルも考慮できる設計にします。基本的な loadCodes メソッドは共通化しておき、特定の条件（この場合は県コードなど）でデータ取得をフィルタリングしつつ、キャッシュするようにします。
+
+以下のように、県コードが必要な場合と、他のテーブルのデータ取得を共通の方法で扱えるように改修を行います。
+
+サービスの設計
+typescript
+コードをコピーする
+loadCodes(tableName: string, filterKey?: string): Observable<Code[]> {
+  const cacheKey = filterKey ? `${tableName}-${filterKey}` : tableName;
+
+  if (!this.codeCache.has(cacheKey)) {
+    this.codeCache.set(cacheKey, new BehaviorSubject<Code[]>([]));
+    
+    const params = filterKey ? { tableName: tableName, filterKey: filterKey } : { tableName: tableName };
+
+    return this.http.get<Code[]>(`/api/codes`, { params }).pipe(
+      tap(codes => this.codeCache.get(cacheKey)?.next(codes))  // キャッシュに保存
+    );
+  }
+  return this.codeCache.get(cacheKey)!.asObservable();
+}
+tableName を指定して、どのテーブルのデータを取得するか決定。
+filterKey をオプションとして渡し、特定の条件（例：県コード）でフィルタリングできるように。
+cacheKey を tableName と filterKey を組み合わせたユニークキーとしてキャッシュ。
+パイプの設計
+filterKey を利用して、市区町村データを都度取得する際にフィルタを適用し、パイプで変換できます。
+
+typescript
+コードをコピーする
+import { Pipe, PipeTransform } from '@angular/core';
+import { CodeService } from '../services/code.service';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+
+@Pipe({
+  name: 'codeTransform'
+})
+export class CodeTransformPipe implements PipeTransform {
+
+  constructor(private codeService: CodeService) {}
+
+  transform(code: string, tableName: string, filterKey?: string): Observable<string> {
+    return this.codeService.loadCodes(tableName, filterKey).pipe(
+      map(codes => {
+        const found = codes.find(c => c.code === code);
+        return found ? found.name : code;  // 対応するコードがあれば名前を返す
+      })
+    );
+  }
+}
+動作概要
+loadCodes メソッドは、指定されたテーブル名とオプションのフィルタキー（県コードなど）に基づいてデータを取得。
+初回取得時にデータはキャッシュされ、同じフィルタ条件で再取得する場合はキャッシュからデータを提供。
+パイプ内でテーブル名やフィルタキーを指定して、市区町村コードなどを適切に変換します。
+これで、県コードなどを使った市区町村データの効率的な取得と、他のコードテーブルの再利用が同じサービスで可能になります。
+
+
+
+
+
+
+
+
+
+
+
+ChatGPT の回答は必ずしも正しいとは限りません
