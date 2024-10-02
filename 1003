@@ -1,0 +1,138 @@
+import { Component, Inject, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup } from '@angular/forms';
+import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { CodeService } from '../services/code.service';
+import { Observable, of } from 'rxjs';
+import { map } from 'rxjs/operators';
+
+@Component({
+  selector: 'app-code-selector-dialog',
+  templateUrl: './code-selector-dialog.component.html',
+  styleUrls: ['./code-selector-dialog.component.css']
+})
+export class CodeSelectorDialogComponent implements OnInit {
+  filterForm: FormGroup;
+  codes$: Observable<Code[]>; // mat-select用のデータ
+  filteredCodes$: Observable<Code[]> = of([]); // 絞り込み後のデータ（初期値は空）
+
+  constructor(
+    private fb: FormBuilder,
+    private codeService: CodeService,
+    public dialogRef: MatDialogRef<CodeSelectorDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: { table1: string, table2: string, prefectureCode?: string }
+  ) {
+    this.filterForm = this.fb.group({
+      selectedTable: [''],  // mat-selectのテーブル
+      filterInput: ['']  // inputBoxでのフィルタリング
+    });
+  }
+
+  ngOnInit(): void {
+    // mat-selectに県コードが選択されている場合、コードをキャッシュから取得
+    this.codes$ = this.codeService.loadCodes(this.data.table1);
+  }
+
+  // 検索ボタンが押されたときに実行されるメソッド
+  onSearch(): void {
+    const formValue = this.filterForm.value;
+    const { selectedTable, filterInput } = formValue;
+
+    if (filterInput && !this.data.prefectureCode) {
+      // filterInputにのみ値がある場合はサーバーにSQLクエリを実行して検索
+      this.filteredCodes$ = this.codeService.loadCodesFromServer(selectedTable, filterInput);
+    } else if (this.data.prefectureCode) {
+      // 県コードがある場合はキャッシュからフィルタ
+      this.filteredCodes$ = this.codes$.pipe(
+        map(codes => this.filterCodes(codes, this.data.prefectureCode, filterInput))
+      );
+    } else {
+      this.filteredCodes$ = of([]); // 条件に合わない場合は空配列を返す
+    }
+  }
+
+  // キャッシュされたデータでフィルタリングする
+  filterCodes(codes: Code[], prefectureCode: string, filterInput: string): Code[] {
+    return codes
+      .filter(code => code.prefectureCode === prefectureCode)
+      .filter(code => !filterInput || code.name.includes(filterInput));
+  }
+
+  // 選択されたコードをダイアログの呼び出し元に返す
+  onSelectCode(code: Code): void {
+    this.dialogRef.close(code);
+  }
+
+  // キャンセルボタンでダイアログを閉じる
+  onCancel(): void {
+    this.dialogRef.close();
+  }
+}
+
+<h2 mat-dialog-title>コード選択</h2>
+<div mat-dialog-content>
+  <mat-form-field>
+    <mat-label>テーブル名</mat-label>
+    <mat-select formControlName="selectedTable">
+      <mat-option *ngFor="let table of [data.table1, data.table2]" [value]="table">
+        {{ table }}
+      </mat-option>
+    </mat-select>
+  </mat-form-field>
+
+  <mat-form-field>
+    <mat-label>フィルター</mat-label>
+    <input matInput formControlName="filterInput" placeholder="検索条件を入力してください">
+  </mat-form-field>
+
+  <button mat-button (click)="onSearch()">検索</button>
+
+  <mat-table [dataSource]="filteredCodes$ | async" class="mat-elevation-z8">
+    <!-- テーブルのカラム定義 -->
+    <ng-container matColumnDef="code">
+      <mat-header-cell *matHeaderCellDef> コード </mat-header-cell>
+      <mat-cell *matCellDef="let element"> {{element.code}} </mat-cell>
+    </ng-container>
+    <ng-container matColumnDef="name">
+      <mat-header-cell *matHeaderCellDef> 名称 </mat-header-cell>
+      <mat-cell *matCellDef="let element"> {{element.name}} </mat-cell>
+    </ng-container>
+
+    <mat-header-row *matHeaderRowDef="['code', 'name']"></mat-header-row>
+    <mat-row *matRowDef="let row; columns: ['code', 'name'];" (click)="onSelectCode(row)"></mat-row>
+  </mat-table>
+</div>
+<div mat-dialog-actions>
+  <button mat-button mat-dialog-close>キャンセル</button>
+</div>
+
+import { HttpClient } from '@angular/common/http';
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+import { Code } from '../models/code.model';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class CodeService {
+
+  private apiUrl = '/api/codes';  // ベースとなるAPIのURL
+
+  constructor(private http: HttpClient) {}
+
+  // サーバーに都度リクエストを送信してデータを取得するメソッド
+  loadCodesFromServer(tableName: string, filterInput: string): Observable<Code[]> {
+    const params = { filter: filterInput };
+    return this.http.get<Code[]>(`${this.apiUrl}/${tableName}/search`, { params });
+  }
+
+  // 以前のloadCodesメソッドも含めてコードのキャッシュ管理
+  loadCodes(tableName: string): Observable<Code[]> {
+    // キャッシュロジックがここにあると仮定します
+    // ...
+  }
+}
+
+
+
+
+
