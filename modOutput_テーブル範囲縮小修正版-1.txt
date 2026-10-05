@@ -1,0 +1,2655 @@
+﻿Option Explicit
+
+'==========================================================
+' modOutput
+' Excel出力 / Dashboard / 操作画面 / フィルター
+'==========================================================
+
+Private Const TABLE_FILE As String = "tblFileList"
+Private Const TABLE_FOLDER As String = "tblFolderSummary"
+Private Const TABLE_ERROR As String = "tblErrorLog"
+
+Private Const BYTES_PER_MB As Double = 1048576#
+
+Private Const BTN_W As Double = 105
+Private Const BTN_H As Double = 30
+Private Const BTN_GAP As Double = 10
+
+Private Const NAV_BTN_W As Double = 130
+Private Const NAV_BTN_H As Double = 32
+Private Const NAV_BTN_GAP As Double = 12
+
+Private Const DASH_BTN_W As Double = 150
+Private Const DASH_BTN_H As Double = 38
+Private Const DASH_BTN_GAP As Double = 14
+
+Private Const HEALTH_BTN_W As Double = 82
+Private Const HEALTH_BTN_GAP As Double = 6
+
+
+'==========================================================
+' FileList 初期画面
+'==========================================================
+Public Sub SetupFileListSheet()
+
+    Dim ws As Worksheet
+    Dim startLeft As Double
+    Dim startTop As Double
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_FILELIST)
+
+    ws.Cells.Clear
+    DeleteToolShapes ws
+
+    ws.Columns("A").ColumnWidth = 3
+    ws.Columns("B").ColumnWidth = 32
+    ws.Columns("C").ColumnWidth = 14
+    ws.Columns("D").ColumnWidth = 15
+    ws.Columns("E").ColumnWidth = 20
+    ws.Columns("F").ColumnWidth = 12
+    ws.Columns("G").ColumnWidth = 12
+    ws.Columns("H").ColumnWidth = 38
+    ws.Columns("I").ColumnWidth = 12
+    ws.Columns("J").ColumnWidth = 12
+    ws.Columns("K").ColumnWidth = 35
+    ws.Columns("L").ColumnWidth = 10
+    ws.Columns("M").ColumnWidth = 45
+    ws.Columns("N").ColumnWidth = 55
+    ws.Columns("O").ColumnWidth = 12
+    ws.Columns("P").ColumnWidth = 18
+    ws.Columns("Q").ColumnWidth = 20
+    ws.Columns("R").ColumnWidth = 14
+    ws.Columns("S").ColumnWidth = 15
+    ws.Columns("T").ColumnWidth = 18
+    ws.Columns("U").ColumnWidth = 15
+
+    ws.Rows("1:16").RowHeight = 22
+
+    With ws.Range("B2:U3")
+        .Merge
+        .value = "FILE LIST"
+
+        .Font.Size = 22
+        .Font.Bold = True
+        .Font.Color = vbWhite
+
+        .Interior.Color = RGB(31, 78, 121)
+
+        .HorizontalAlignment = xlLeft
+        .VerticalAlignment = xlCenter
+    End With
+
+    ws.Range("B4:U4").Merge
+
+    With ws.Range("B4")
+        .value = _
+            "条件で絞り込み、確認したいファイルを探します。" & _
+            " 対象行をダブルクリックするとExplorerで表示できます。"
+
+        .Font.Color = RGB(90, 90, 90)
+        .Font.Size = 10
+    End With
+
+    '------------------------------------------------------
+    ' ナビゲーション
+    '------------------------------------------------------
+    startLeft = ws.Range("B6").Left
+    startTop = ws.Range("B6").Top
+
+    CreateButtonAt _
+        ws, _
+        startLeft, _
+        startTop, _
+        NAV_BTN_W, _
+        NAV_BTN_H, _
+        "← Dashboard", _
+        "ShowDashboard", _
+        RGB(89, 89, 89)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + NAV_BTN_W + NAV_BTN_GAP, _
+        startTop, _
+        NAV_BTN_W, _
+        NAV_BTN_H, _
+        "Explorerで表示", _
+        "OpenSelectedFileInExplorer", _
+        RGB(68, 114, 196)
+
+    '------------------------------------------------------
+    ' クイックフィルター
+    '------------------------------------------------------
+    With ws.Range("B8")
+        .value = "クイックフィルター"
+        .Font.Bold = True
+        .Font.Size = 11
+        .Font.Color = RGB(80, 80, 80)
+    End With
+
+    startLeft = ws.Range("B9").Left
+    startTop = ws.Range("B9").Top
+
+    CreateButtonAt _
+        ws, startLeft, startTop, _
+        BTN_W, BTN_H, _
+        "すべて", _
+        "ShowAllFiles", _
+        RGB(112, 173, 71)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + BTN_W + BTN_GAP, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "整理候補", _
+        "ShowCleanupCandidates", _
+        RGB(237, 125, 49)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + (BTN_W + BTN_GAP) * 2, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "重複", _
+        "ShowDuplicateFiles", _
+        RGB(237, 125, 49)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + (BTN_W + BTN_GAP) * 3, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "大容量", _
+        "ShowLargeFiles", _
+        RGB(237, 125, 49)
+
+    startTop = startTop + BTN_H + BTN_GAP
+
+    CreateButtonAt _
+        ws, _
+        startLeft, _
+        startTop, _
+        BTN_W, BTN_H, _
+        CStr(gOldYear1) & "年以上", _
+        "ShowOldFiles1", _
+        RGB(91, 155, 213)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + BTN_W + BTN_GAP, _
+        startTop, _
+        BTN_W, BTN_H, _
+        CStr(gOldYear2) & "年以上", _
+        "ShowOldFiles3", _
+        RGB(91, 155, 213)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + (BTN_W + BTN_GAP) * 2, _
+        startTop, _
+        BTN_W, BTN_H, _
+        CStr(gOldYear3) & "年以上", _
+        "ShowOldFiles5", _
+        RGB(91, 155, 213)
+
+    ws.Range("B13").value = "現在の表示："
+    ws.Range("B14").value = "表示件数："
+
+    ws.Range("C13:H13").Merge
+    ws.Range("C14:H14").Merge
+
+    ws.Range("C13").value = "すべて"
+    ws.Range("C14").value = "0 / 0 件"
+
+    ws.Range("B13:B14").Font.Bold = True
+    ws.Range("B13:B14").Font.Color = RGB(80, 80, 80)
+
+    ws.Range("B16:U16").value = Array( _
+        "ファイル名", _
+        "カテゴリ", _
+        "サイズ(MB)", _
+        "最終更新日時", _
+        "経過月数", _
+        "整理候補", _
+        "整理候補理由", _
+        "重複", _
+        "大容量", _
+        "親フォルダ", _
+        "階層", _
+        "相対パス", _
+        "フルパス", _
+        "拡張子", _
+        "サイズ(Byte)", _
+        "作成日時", _
+        "経過日数", _
+        "長期未更新", _
+        "ファイル名長警告", _
+        "パス長警告")
+
+    FormatHeader ws.Range("B16:U16")
+
+    ws.Rows(16).RowHeight = 26
+
+    '1～16行を固定
+    FreezeSheetAt ws, 16
+
+End Sub
+
+
+'==========================================================
+' FolderSummary 初期画面
+'==========================================================
+Public Sub SetupFolderSummarySheet()
+
+    Dim ws As Worksheet
+    Dim startLeft As Double
+    Dim startTop As Double
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_FOLDER)
+
+    ws.Cells.Clear
+    DeleteToolShapes ws
+
+    ws.Columns("A").ColumnWidth = 3
+    ws.Columns("B").ColumnWidth = 32
+    ws.Columns("C").ColumnWidth = 10
+    ws.Columns("D").ColumnWidth = 18
+    ws.Columns("E").ColumnWidth = 18
+    ws.Columns("F").ColumnWidth = 18
+    ws.Columns("G").ColumnWidth = 18
+    ws.Columns("H").ColumnWidth = 18
+    ws.Columns("I").ColumnWidth = 18
+    ws.Columns("J").ColumnWidth = 18
+    ws.Columns("K").ColumnWidth = 14
+    ws.Columns("L").ColumnWidth = 22
+    ws.Columns("M").ColumnWidth = 50
+    ws.Columns("N").ColumnWidth = 55
+    ws.Columns("O").ColumnWidth = 14
+    ws.Columns("P").ColumnWidth = 10
+    ws.Columns("Q").ColumnWidth = 48
+
+    ws.Rows("1:18").RowHeight = 22
+
+    With ws.Range("B2:Q3")
+        .Merge
+        .Value = "FOLDER SUMMARY"
+        .Font.Size = 22
+        .Font.Bold = True
+        .Font.Color = vbWhite
+        .Interior.Color = RGB(31, 78, 121)
+        .HorizontalAlignment = xlLeft
+        .VerticalAlignment = xlCenter
+    End With
+
+    ws.Range("B4:Q4").Merge
+
+    With ws.Range("B4")
+        .Value = _
+            "同じ階層のフォルダを比較できます。" & _
+            " 健全度は対象フォルダ配下の全ファイル／サブフォルダを含めて算出します。"
+        .Font.Color = RGB(90, 90, 90)
+        .Font.Size = 10
+    End With
+
+    startLeft = ws.Range("B6").Left
+    startTop = ws.Range("B6").Top
+
+    CreateButtonAt _
+        ws, startLeft, startTop, _
+        NAV_BTN_W, NAV_BTN_H, _
+        "← Dashboard", _
+        "ShowDashboard", _
+        RGB(89, 89, 89)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + NAV_BTN_W + NAV_BTN_GAP, _
+        startTop, _
+        NAV_BTN_W, NAV_BTN_H, _
+        "Explorerで開く", _
+        "OpenSelectedFolderInExplorer", _
+        RGB(68, 114, 196)
+
+    With ws.Range("B8")
+        .Value = "フォルダフィルター"
+        .Font.Bold = True
+        .Font.Size = 11
+        .Font.Color = RGB(80, 80, 80)
+    End With
+
+    startLeft = ws.Range("B9").Left
+    startTop = ws.Range("B9").Top
+
+    CreateButtonAt _
+        ws, startLeft, startTop, _
+        BTN_W, BTN_H, _
+        "すべて", _
+        "ShowAllFolders", _
+        RGB(112, 173, 71)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + BTN_W + BTN_GAP, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "整理候補あり", _
+        "ShowCleanupFolders", _
+        RGB(237, 125, 49)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + (BTN_W + BTN_GAP) * 2, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "起点", _
+        "ShowFolderLevel0", _
+        RGB(91, 155, 213)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + (BTN_W + BTN_GAP) * 3, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "第1階層", _
+        "ShowFolderLevel1", _
+        RGB(91, 155, 213)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + (BTN_W + BTN_GAP) * 4, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "第2階層", _
+        "ShowFolderLevel2", _
+        RGB(91, 155, 213)
+
+    CreateButtonAt _
+        ws, _
+        startLeft + (BTN_W + BTN_GAP) * 5, _
+        startTop, _
+        BTN_W, BTN_H, _
+        "第3階層", _
+        "ShowFolderLevel3", _
+        RGB(91, 155, 213)
+
+    '第2行：健全度フィルターのみ
+    startTop = startTop + BTN_H + BTN_GAP
+
+    CreateButtonAt ws, _
+        startLeft, startTop, _
+        HEALTH_BTN_W, BTN_H, "健全度 A", "ShowHealthRankA", RGB(112, 173, 71)
+
+    CreateButtonAt ws, _
+        startLeft + (HEALTH_BTN_W + HEALTH_BTN_GAP), startTop, _
+        HEALTH_BTN_W, BTN_H, "健全度 B", "ShowHealthRankB", RGB(146, 208, 80)
+
+    CreateButtonAt ws, _
+        startLeft + (HEALTH_BTN_W + HEALTH_BTN_GAP) * 2, startTop, _
+        HEALTH_BTN_W, BTN_H, "健全度 C", "ShowHealthRankC", RGB(255, 192, 0)
+
+    CreateButtonAt ws, _
+        startLeft + (HEALTH_BTN_W + HEALTH_BTN_GAP) * 3, startTop, _
+        HEALTH_BTN_W, BTN_H, "健全度 D", "ShowHealthRankD", RGB(237, 125, 49)
+
+    CreateButtonAt ws, _
+        startLeft + (HEALTH_BTN_W + HEALTH_BTN_GAP) * 4, startTop, _
+        HEALTH_BTN_W, BTN_H, "健全度 E", "ShowHealthRankE", RGB(192, 80, 77)
+
+    '表示情報を上へ詰める
+    ws.Range("B12").Value = "現在の表示："
+    ws.Range("B13").Value = "表示件数："
+
+    ws.Range("C12:H12").Merge
+    ws.Range("C13:H13").Merge
+
+    ws.Range("C12").Value = "すべて"
+    ws.Range("C13").Value = "0 / 0 フォルダ"
+
+    ws.Range("B12:B13").Font.Bold = True
+    ws.Range("B12:B13").Font.Color = RGB(80, 80, 80)
+
+    ws.Range("B15:Q15").Value = Array( _
+        "フォルダ名", _
+        "階層", _
+        "直下ファイル数", _
+        "直下容量(MB)", _
+        "配下総ファイル数", _
+        "配下総容量(MB)", _
+        "整理候補ファイル数", _
+        "整理候補容量(MB)", _
+        "直下サブフォルダ数", _
+        "空フォルダ", _
+        "最新更新日時", _
+        "相対パス", _
+        "フルパス", _
+        "健全度スコア", _
+        "ランク", _
+        "主な減点理由")
+
+    FormatHeader ws.Range("B15:Q15")
+    ws.Rows(15).RowHeight = 26
+
+    FreezeSheetAt ws, 15
+
+End Sub
+
+'==========================================================
+' ErrorLog 初期画面
+'==========================================================
+Public Sub SetupErrorLogSheet()
+
+    Dim ws As Worksheet
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_ERROR)
+
+    ws.Cells.Clear
+    DeleteToolShapes ws
+
+    ws.Range("A1:E1").value = Array( _
+        "発生日時", _
+        "処理内容", _
+        "対象パス", _
+        "エラー番号", _
+        "エラー内容")
+
+    FormatHeader ws.Range("A1:E1")
+
+    ws.Columns("A").ColumnWidth = 20
+    ws.Columns("B").ColumnWidth = 24
+    ws.Columns("C").ColumnWidth = 70
+    ws.Columns("D").ColumnWidth = 14
+    ws.Columns("E").ColumnWidth = 60
+
+End Sub
+
+
+'==========================================================
+' Dashboard 初期画面
+'==========================================================
+Public Sub SetupDashboardSheet()
+
+    Dim ws As Worksheet
+    Dim leftPos As Double
+    Dim topPos As Double
+    Dim row2Top As Double
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_DASHBOARD)
+
+    ws.Cells.Clear
+    DeleteToolShapes ws
+
+    ws.Columns("A").ColumnWidth = 3
+    ws.Columns("B").ColumnWidth = 22
+    ws.Columns("C").ColumnWidth = 18
+    ws.Columns("D").ColumnWidth = 4
+    ws.Columns("E").ColumnWidth = 22
+    ws.Columns("F").ColumnWidth = 18
+    ws.Columns("G").ColumnWidth = 4
+    ws.Columns("H").ColumnWidth = 22
+    ws.Columns("I").ColumnWidth = 18
+
+    ws.Rows("1:30").RowHeight = 22
+
+    With ws.Range("B2:I3")
+        .Merge
+        .value = "FILE INVENTORY"
+
+        .Font.Size = 24
+        .Font.Bold = True
+        .Font.Color = vbWhite
+
+        .Interior.Color = RGB(31, 78, 121)
+
+        .HorizontalAlignment = xlLeft
+        .VerticalAlignment = xlCenter
+    End With
+
+    ws.Range("B4:I4").Merge
+
+    With ws.Range("B4")
+        .value = _
+            "共有フォルダ／ローカルフォルダの棚卸し・分析"
+
+        .Font.Size = 11
+        .Font.Color = RGB(90, 90, 90)
+    End With
+
+    '------------------------------------------------------
+    ' 操作ボタン
+    '------------------------------------------------------
+    leftPos = ws.Range("B6").Left
+    topPos = ws.Range("B6").Top
+
+    CreateButtonAt _
+        ws, leftPos, topPos, _
+        DASH_BTN_W, DASH_BTN_H, _
+        "スキャン開始", _
+        "StartScan", _
+        RGB(68, 114, 196)
+
+    CreateButtonAt _
+        ws, _
+        leftPos + DASH_BTN_W + DASH_BTN_GAP, _
+        topPos, _
+        DASH_BTN_W, DASH_BTN_H, _
+        "ファイル一覧", _
+        "ShowFileList", _
+        RGB(91, 155, 213)
+
+    CreateButtonAt _
+        ws, _
+        leftPos + (DASH_BTN_W + DASH_BTN_GAP) * 2, _
+        topPos, _
+        DASH_BTN_W, DASH_BTN_H, _
+        "フォルダ集計", _
+        "ShowFolderSummary", _
+        RGB(91, 155, 213)
+
+    row2Top = topPos + DASH_BTN_H + DASH_BTN_GAP
+
+    CreateButtonAt _
+        ws, _
+        leftPos, row2Top, _
+        DASH_BTN_W, DASH_BTN_H, _
+        "エラーログ", _
+        "ShowErrorLog", _
+        RGB(112, 173, 71)
+
+    CreateButtonAt _
+        ws, _
+        leftPos + DASH_BTN_W + DASH_BTN_GAP, _
+        row2Top, _
+        DASH_BTN_W, DASH_BTN_H, _
+        "設定", _
+        "ShowSettings", _
+        RGB(112, 173, 71)
+
+    '------------------------------------------------------
+    ' スキャン情報
+    '------------------------------------------------------
+    ws.Range("B10").value = "スキャン対象"
+    ws.Range("B11").value = "実行日時"
+    ws.Range("B12").value = "所要時間"
+
+    ws.Range("B10:B12").Font.Bold = True
+    ws.Range("B10:B12").Font.Color = RGB(80, 80, 80)
+
+    ws.Range("C10:I10").Merge
+    ws.Range("C11:E11").Merge
+    ws.Range("C12:E12").Merge
+
+    ws.Range("C10").value = "-"
+    ws.Range("C11").value = "-"
+    ws.Range("C12").value = "-"
+
+    ws.Range("C10:I12").VerticalAlignment = xlCenter
+
+    '------------------------------------------------------
+    ' 数値カード
+    '------------------------------------------------------
+    CreateDashboardCard ws, "B14:C16", "総ファイル数"
+    CreateDashboardCard ws, "E14:F16", "総フォルダ数"
+    CreateDashboardCard ws, "H14:I16", "総容量"
+
+    CreateDashboardCard _
+        ws, "B18:C20", _
+        CStr(gOldYear1) & "年以上未更新"
+
+    CreateDashboardCard _
+        ws, "E18:F20", _
+        CStr(gOldYear2) & "年以上未更新"
+
+    CreateDashboardCard _
+        ws, "H18:I20", _
+        CStr(gOldYear3) & "年以上未更新"
+
+    CreateDashboardCard ws, "B22:C24", "大容量ファイル"
+    CreateDashboardCard ws, "E22:F24", "重複ファイル"
+    CreateDashboardCard ws, "H22:I24", "空フォルダ"
+
+    CreateDashboardCard ws, "B26:C28", "整理候補ファイル"
+    CreateDashboardCard ws, "E26:F28", "整理候補容量"
+    CreateDashboardCard ws, "H26:I28", "エラー件数"
+
+    ResetSheetWindow ws
+
+End Sub
+
+
+'==========================================================
+' Dashboardカード
+'==========================================================
+Private Sub CreateDashboardCard( _
+    ByVal ws As Worksheet, _
+    ByVal targetAddress As String, _
+    ByVal titleText As String)
+
+    Dim cardRange As Range
+
+    Set cardRange = ws.Range(targetAddress)
+
+    With cardRange
+        .Merge
+
+        .Interior.Color = RGB(242, 242, 242)
+
+        .Borders.LineStyle = xlContinuous
+        .Borders.Color = RGB(210, 210, 210)
+
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+    End With
+
+    With cardRange.Cells(1, 1)
+        .value = titleText & vbLf & "-"
+        .WrapText = True
+
+        .Font.Size = 11
+        .Font.Bold = True
+        .Font.Color = RGB(80, 80, 80)
+    End With
+
+End Sub
+
+
+'==========================================================
+' Dashboardカードタイトル更新
+'==========================================================
+Public Sub RefreshSettingsDisplay()
+
+    Dim ws As Worksheet
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_DASHBOARD)
+
+    SetCardTitle _
+        ws, "B18", _
+        CStr(gOldYear1) & "年以上未更新"
+
+    SetCardTitle _
+        ws, "E18", _
+        CStr(gOldYear2) & "年以上未更新"
+
+    SetCardTitle _
+        ws, "H18", _
+        CStr(gOldYear3) & "年以上未更新"
+
+End Sub
+
+
+Private Sub SetCardTitle( _
+    ByVal ws As Worksheet, _
+    ByVal cardTopLeft As String, _
+    ByVal titleText As String)
+
+    Dim currentValue As String
+    Dim p As Long
+
+    currentValue = CStr(ws.Range(cardTopLeft).value)
+
+    p = InStr(currentValue, vbLf)
+
+    If p > 0 Then
+        currentValue = Mid$(currentValue, p + 1)
+    Else
+        currentValue = "-"
+    End If
+
+    ws.Range(cardTopLeft).value = _
+        titleText & vbLf & currentValue
+
+End Sub
+
+
+'==========================================================
+' ボタン作成
+'==========================================================
+Private Sub CreateButtonAt( _
+    ByVal ws As Worksheet, _
+    ByVal leftPos As Double, _
+    ByVal topPos As Double, _
+    ByVal buttonWidth As Double, _
+    ByVal buttonHeight As Double, _
+    ByVal caption As String, _
+    ByVal macroName As String, _
+    ByVal fillColor As Long)
+
+    Dim shp As shape
+
+    Set shp = _
+        ws.Shapes.AddShape( _
+            msoShapeRoundedRectangle, _
+            leftPos, _
+            topPos, _
+            buttonWidth, _
+            buttonHeight)
+
+    With shp
+        .Fill.ForeColor.RGB = fillColor
+        .line.Visible = msoFalse
+
+        .TextFrame2.TextRange.Text = caption
+        .TextFrame2.TextRange.Font.Size = 10
+        .TextFrame2.TextRange.Font.Bold = msoTrue
+        .TextFrame2.TextRange.Font.Fill.ForeColor.RGB = vbWhite
+
+        .TextFrame2.VerticalAnchor = msoAnchorMiddle
+        .TextFrame2.TextRange.ParagraphFormat.Alignment = _
+            msoAlignCenter
+
+        .OnAction = macroName
+
+        .Placement = xlFreeFloating
+    End With
+
+End Sub
+
+
+'==========================================================
+' Shape削除
+'==========================================================
+Private Sub DeleteToolShapes( _
+    ByVal ws As Worksheet)
+
+    Dim i As Long
+
+    For i = ws.Shapes.Count To 1 Step -1
+        ws.Shapes(i).Delete
+    Next i
+
+End Sub
+
+
+'==========================================================
+' ヘッダ書式
+'==========================================================
+Private Sub FormatHeader( _
+    ByVal targetRange As Range)
+
+    With targetRange
+        .Font.Bold = True
+        .Font.Color = vbWhite
+
+        .Interior.Color = RGB(31, 78, 121)
+
+        .HorizontalAlignment = xlCenter
+        .VerticalAlignment = xlCenter
+
+        .Borders.LineStyle = xlContinuous
+    End With
+
+End Sub
+
+
+'==========================================================
+' ウィンドウ枠固定
+'
+' freezeRow = 16 の場合
+'
+'   1～16行目 ：固定
+'   17行目以降：スクロール
+'
+' 既存のFreezePanes・Split・スクロール位置を
+' 完全に解除してから設定し直す。
+'==========================================================
+Private Sub ResetSheetWindow( _
+    ByVal ws As Worksheet)
+
+    On Error GoTo ExitHandler
+
+    ws.Activate
+
+    With ActiveWindow
+        .FreezePanes = False
+        .SplitRow = 0
+        .SplitColumn = 0
+        .ScrollRow = 1
+        .ScrollColumn = 1
+    End With
+
+    ws.Range("A1").Select
+
+ExitHandler:
+
+End Sub
+
+
+Private Sub FreezeSheetAt( _
+    ByVal ws As Worksheet, _
+    ByVal freezeRow As Long)
+
+    Dim targetCell As Range
+
+    On Error GoTo ExitHandler
+
+    ws.Activate
+
+    '------------------------------------------------------
+    ' 既存状態を完全リセット
+    '------------------------------------------------------
+    With ActiveWindow
+
+        .FreezePanes = False
+
+        .SplitRow = 0
+        .SplitColumn = 0
+
+        .ScrollRow = 1
+        .ScrollColumn = 1
+
+    End With
+
+    '------------------------------------------------------
+    ' 17行目を選択
+    '
+    ' A列を選ぶことで列方向は固定しない。
+    ' freezeRow = 16ならA17。
+    '------------------------------------------------------
+    Set targetCell = _
+        ws.Cells(freezeRow + 1, 1)
+
+    targetCell.Select
+
+    '------------------------------------------------------
+    ' 選択セルより上を固定
+    '------------------------------------------------------
+    ActiveWindow.FreezePanes = True
+
+    '------------------------------------------------------
+    ' 表示位置を先頭に戻す
+    '------------------------------------------------------
+    With ActiveWindow
+        .ScrollRow = 1
+        .ScrollColumn = 1
+    End With
+
+ExitHandler:
+
+End Sub
+
+
+'==========================================================
+' 経過月数
+'==========================================================
+Private Function GetElapsedMonths( _
+    ByVal startDate As Date, _
+    ByVal endDate As Date) As Long
+
+    Dim months As Long
+
+    If endDate <= startDate Then
+        GetElapsedMonths = 0
+        Exit Function
+    End If
+
+    months = _
+        DateDiff( _
+            "m", _
+            startDate, _
+            endDate)
+
+    If Day(endDate) < Day(startDate) Then
+        months = months - 1
+    End If
+
+    If months < 0 Then
+        months = 0
+    End If
+
+    GetElapsedMonths = months
+
+End Function
+
+
+'==========================================================
+' 全結果出力
+'==========================================================
+Public Sub OutputAllResults()
+
+    'SettingsはStartScan側でLoadSettings済み。
+    'スキャン後の現在値に合わせて、FileListの年数ボタン表示も更新する。
+    RefreshFileListFilterButtonCaptions
+
+    OutputFileList
+    OutputFolderSummary
+    OutputErrorLog
+    UpdateDashboard
+
+    RefreshSettingsDisplay
+
+End Sub
+
+
+'==========================================================
+' FileList 年数フィルターボタン表示更新
+'==========================================================
+Private Sub RefreshFileListFilterButtonCaptions()
+
+    Dim ws As Worksheet
+    Dim shp As Shape
+    Dim actionName As String
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_FILELIST)
+
+    For Each shp In ws.Shapes
+
+        actionName = GetShapeMacroName(shp)
+
+        Select Case actionName
+
+            Case "ShowOldFiles1"
+                SetShapeCaption _
+                    shp, _
+                    CStr(gOldYear1) & "年以上"
+
+            Case "ShowOldFiles3"
+                SetShapeCaption _
+                    shp, _
+                    CStr(gOldYear2) & "年以上"
+
+            Case "ShowOldFiles5"
+                SetShapeCaption _
+                    shp, _
+                    CStr(gOldYear3) & "年以上"
+
+        End Select
+
+    Next shp
+
+End Sub
+
+
+Private Function GetShapeMacroName( _
+    ByVal shp As Shape) As String
+
+    Dim actionName As String
+    Dim p As Long
+
+    On Error Resume Next
+    actionName = CStr(shp.OnAction)
+    On Error GoTo 0
+
+    If Len(actionName) = 0 Then Exit Function
+
+    'ブック名付きで返る場合にも対応
+    '例: '棚卸し.xlsm'!ShowOldFiles1
+    p = InStrRev(actionName, "!")
+
+    If p > 0 Then
+        actionName = Mid$(actionName, p + 1)
+    End If
+
+    actionName = Replace$(actionName, "'", "")
+    actionName = Trim$(actionName)
+
+    GetShapeMacroName = actionName
+
+End Function
+
+
+Private Sub SetShapeCaption( _
+    ByVal shp As Shape, _
+    ByVal caption As String)
+
+    On Error Resume Next
+
+    shp.TextFrame2.TextRange.Text = caption
+
+    If Err.Number <> 0 Then
+        Err.Clear
+        shp.TextFrame.Characters.Text = caption
+    End If
+
+    On Error GoTo 0
+
+End Sub
+
+
+'==========================================================
+' FileList出力
+'==========================================================
+Private Sub OutputFileList()
+
+    Dim ws As Worksheet
+    Dim data() As Variant
+
+    Dim fileCount As Long
+    Dim r As Long
+
+    Dim sizeBytes As Double
+    Dim modifiedDate As Date
+    Dim elapsedMonths As Long
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_FILELIST)
+
+    fileCount = GetFileCount()
+
+    DeleteExistingTable ws, TABLE_FILE
+
+    ws.Range( _
+        "B17:U" & _
+        ws.Rows.Count).ClearContents
+
+    If fileCount = 0 Then
+        ws.Range("C13").value = "すべて"
+        ws.Range("C14").value = "0 / 0 件"
+        Exit Sub
+    End If
+
+    If fileCount > ws.Rows.Count - 16 Then
+        Err.Raise _
+            vbObjectError + 300, _
+            , _
+            "FileListがExcelの最大行数を超えます。"
+    End If
+
+    ReDim data( _
+        1 To fileCount, _
+        1 To 20)
+
+    For r = 1 To fileCount
+
+        sizeBytes = _
+            CDbl(GetFileValue(FC_SIZE, r))
+
+        modifiedDate = _
+            CDate(GetFileValue(FC_MODIFIED, r))
+
+        elapsedMonths = _
+            GetElapsedMonths( _
+                modifiedDate, _
+                Now)
+
+        data(r, 1) = _
+            GetFileValue(FC_NAME, r)
+
+        data(r, 2) = _
+            GetFileValue(FC_CATEGORY, r)
+
+        data(r, 3) = _
+            sizeBytes / BYTES_PER_MB
+
+        data(r, 4) = _
+            modifiedDate
+
+        data(r, 5) = _
+            elapsedMonths
+
+        data(r, 6) = _
+            GetFileValue(FC_CLEANUP, r)
+
+        data(r, 7) = _
+            GetFileValue(FC_REASON, r)
+
+        data(r, 8) = _
+            GetFileValue(FC_DUPLICATE, r)
+
+        data(r, 9) = _
+            GetFileValue(FC_LARGE, r)
+
+        data(r, 10) = _
+            GetFileValue(FC_PARENT, r)
+
+        data(r, 11) = _
+            GetFileValue(FC_LEVEL, r)
+
+        data(r, 12) = _
+            GetFileValue(FC_RELATIVE, r)
+
+        data(r, 13) = _
+            GetFileValue(FC_FULLPATH, r)
+
+        data(r, 14) = _
+            GetFileValue(FC_EXT, r)
+
+        data(r, 15) = _
+            sizeBytes
+
+        data(r, 16) = _
+            GetFileValue(FC_CREATED, r)
+
+        data(r, 17) = _
+            GetFileValue(FC_DAYS, r)
+
+        data(r, 18) = _
+            GetFileValue(FC_OLD, r)
+
+        data(r, 19) = _
+            GetFileValue(FC_NAMEWARN, r)
+
+        data(r, 20) = _
+            GetFileValue(FC_PATHWARN, r)
+
+    Next r
+
+    ws.Range("B17").Resize( _
+        fileCount, _
+        20).value = data
+
+    'サイズ(MB)
+    ws.Columns("D").NumberFormat = _
+        "#,##0.00 ""MB"""
+
+    '最終更新日時
+    ws.Columns("E").NumberFormat = _
+        "yyyy/mm/dd hh:mm"
+
+    '経過月数
+    ws.Columns("F").NumberFormat = _
+        "0 ""か月"""
+
+    'サイズ(Byte)
+    ws.Columns("P").NumberFormat = _
+        "#,##0"
+
+    '作成日時
+    ws.Columns("Q").NumberFormat = _
+        "yyyy/mm/dd hh:mm"
+
+    '経過日数
+    ws.Columns("R").NumberFormat = _
+        "#,##0 ""日"""
+
+    CreateTable _
+        ws, _
+        ws.Range("B16").Resize( _
+            fileCount + 1, _
+            20), _
+        TABLE_FILE
+
+    ws.Range("C13").value = "すべて"
+
+    ws.Range("C14").value = _
+        Format$(fileCount, "#,##0") & _
+        " / " & _
+        Format$(fileCount, "#,##0") & _
+        " 件"
+
+End Sub
+
+
+'==========================================================
+' FolderSummary出力
+'==========================================================
+Private Sub OutputFolderSummary()
+
+    Dim ws As Worksheet
+    Dim folders As Object
+    Dim health As Object
+
+    Dim keys As Variant
+    Dim data() As Variant
+    Dim folderData As Variant
+    Dim healthData As Variant
+
+    Dim i As Long
+    Dim rowIndex As Long
+    Dim folderCount As Long
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_FOLDER)
+    Set folders = GetFolderDictionary()
+
+    DeleteExistingTable ws, TABLE_FOLDER
+
+    ws.Range( _
+        "B17:Q" & _
+        ws.Rows.Count).ClearContents
+
+    If folders Is Nothing Then Exit Sub
+    If folders.Count = 0 Then Exit Sub
+
+    folderCount = folders.Count
+
+    If folderCount > ws.Rows.Count - 15 Then
+        Err.Raise _
+            vbObjectError + 301, _
+            , _
+            "FolderSummaryがExcelの最大行数を超えます。"
+    End If
+
+    Set health = BuildFolderHealthData(folders)
+
+    ReDim data( _
+        1 To folderCount, _
+        1 To 16)
+
+    keys = folders.keys
+
+    For i = LBound(keys) To UBound(keys)
+
+        rowIndex = rowIndex + 1
+        folderData = folders(keys(i))
+
+        data(rowIndex, 1) = folderData(1)
+        data(rowIndex, 2) = folderData(4)
+        data(rowIndex, 3) = folderData(5)
+
+        data(rowIndex, 4) = _
+            CDbl(folderData(6)) / BYTES_PER_MB
+
+        data(rowIndex, 5) = folderData(7)
+
+        data(rowIndex, 6) = _
+            CDbl(folderData(8)) / BYTES_PER_MB
+
+        data(rowIndex, 7) = folderData(15)
+
+        data(rowIndex, 8) = _
+            CDbl(folderData(16)) / BYTES_PER_MB
+
+        data(rowIndex, 9) = folderData(9)
+
+        If CBool(folderData(10)) Then
+            data(rowIndex, 10) = "○"
+        Else
+            data(rowIndex, 10) = ""
+        End If
+
+        If Not IsEmpty(folderData(11)) Then
+            data(rowIndex, 11) = folderData(11)
+        End If
+
+        data(rowIndex, 12) = folderData(3)
+        data(rowIndex, 13) = folderData(2)
+
+        If health.Exists(CStr(keys(i))) Then
+            healthData = health(CStr(keys(i)))
+
+            data(rowIndex, 14) = healthData(1)
+            data(rowIndex, 15) = healthData(2)
+            data(rowIndex, 16) = healthData(3)
+        End If
+
+    Next i
+
+    ws.Range("B16").Resize( _
+        folderCount, _
+        16).value = data
+
+    ws.Columns("E").NumberFormat = _
+        "#,##0.00 ""MB"""
+
+    ws.Columns("G").NumberFormat = _
+        "#,##0.00 ""MB"""
+
+    ws.Columns("I").NumberFormat = _
+        "#,##0.00 ""MB"""
+
+    ws.Columns("L").NumberFormat = _
+        "yyyy/mm/dd hh:mm"
+
+    ws.Columns("O").NumberFormat = _
+        "0.0 ""点"""
+
+    CreateTable _
+        ws, _
+        ws.Range("B15").Resize( _
+            folderCount + 1, _
+            16), _
+        TABLE_FOLDER
+
+    SortFoldersNormal
+
+    ws.Range("C12").value = "すべて"
+
+    ws.Range("C13").value = _
+        Format$(folderCount, "#,##0") & _
+        " / " & _
+        Format$(folderCount, "#,##0") & _
+        " フォルダ"
+
+End Sub
+
+
+'==========================================================
+' フォルダ健全度
+'
+' 対象フォルダ直下だけではなく、配下の全ファイルと
+' 全サブフォルダを含めて評価する。
+'
+' 最大減点（重み）はSettingsで変更可能。
+' 初期値：30 / 25 / 15 / 15 / 10 / 5
+' 合計100になるよう設定する。
+
+' 各悪化度 = Min(実測率 / 最大悪化基準率, 1)
+' 件数率と容量率を使う項目は、項目ごとの比率で合成する。
+'==========================================================
+Private Function BuildFolderHealthData( _
+    ByVal folders As Object) As Object
+
+    Const IDX_FILE_COUNT As Long = 1
+    Const IDX_TOTAL_BYTES As Long = 2
+    Const IDX_OLD_COUNT As Long = 3
+    Const IDX_OLD_BYTES As Long = 4
+    Const IDX_CLEANUP_COUNT As Long = 5
+    Const IDX_CLEANUP_BYTES As Long = 6
+    Const IDX_DUP_COUNT As Long = 7
+    Const IDX_DUP_BYTES As Long = 8
+    Const IDX_LARGE_OLD_COUNT As Long = 9
+    Const IDX_LARGE_OLD_BYTES As Long = 10
+    Const IDX_WARN_COUNT As Long = 11
+    Const IDX_FOLDER_COUNT As Long = 12
+    Const IDX_EMPTY_FOLDER_COUNT As Long = 13
+
+    Const STAT_COUNT As Long = 13
+
+    Const LIMIT_OLD As Double = 0.4
+    Const LIMIT_CLEANUP As Double = 0.3
+    Const LIMIT_DUP As Double = 0.1
+    Const LIMIT_LARGE_OLD As Double = 0.05
+    Const LIMIT_WARN As Double = 0.1
+    Const LIMIT_EMPTY As Double = 0.3
+
+    Dim stats As Object
+    Dim result As Object
+
+    Dim keys As Variant
+    Dim key As Variant
+    Dim folderData As Variant
+    Dim statData As Variant
+    Dim parentData As Variant
+
+    Dim i As Long
+    Dim level As Long
+    Dim maxLevel As Long
+    Dim fileCount As Long
+
+    Dim parentPath As String
+    Dim fileSize As Double
+    Dim yearsOld As Double
+
+    Dim countRatio As Double
+    Dim byteRatio As Double
+    Dim severityOld As Double
+    Dim severityCleanup As Double
+    Dim severityDup As Double
+    Dim severityLargeOld As Double
+    Dim severityWarn As Double
+    Dim severityEmpty As Double
+
+    Dim penaltyOld As Double
+    Dim penaltyCleanup As Double
+    Dim penaltyDup As Double
+    Dim penaltyLargeOld As Double
+    Dim penaltyWarn As Double
+    Dim penaltyEmpty As Double
+
+    Dim score As Double
+    Dim rank As String
+    Dim reason As String
+    Dim healthData(1 To 3) As Variant
+
+    Set stats = CreateObject("Scripting.Dictionary")
+    stats.CompareMode = vbTextCompare
+
+    Set result = CreateObject("Scripting.Dictionary")
+    result.CompareMode = vbTextCompare
+
+    keys = folders.keys
+
+    '------------------------------------------------------
+    ' 全フォルダの初期値
+    '------------------------------------------------------
+    For Each key In keys
+
+        folderData = folders(key)
+
+        ReDim statData(1 To STAT_COUNT)
+
+        statData(IDX_FILE_COUNT) = 0&
+        statData(IDX_TOTAL_BYTES) = 0#
+        statData(IDX_OLD_COUNT) = 0&
+        statData(IDX_OLD_BYTES) = 0#
+        statData(IDX_CLEANUP_COUNT) = 0&
+        statData(IDX_CLEANUP_BYTES) = 0#
+        statData(IDX_DUP_COUNT) = 0&
+        statData(IDX_DUP_BYTES) = 0#
+        statData(IDX_LARGE_OLD_COUNT) = 0&
+        statData(IDX_LARGE_OLD_BYTES) = 0#
+        statData(IDX_WARN_COUNT) = 0&
+
+        '自分自身を1フォルダとして数える。
+        statData(IDX_FOLDER_COUNT) = 1&
+
+        If CBool(folderData(10)) Then
+            statData(IDX_EMPTY_FOLDER_COUNT) = 1&
+        Else
+            statData(IDX_EMPTY_FOLDER_COUNT) = 0&
+        End If
+
+        stats.Add CStr(key), statData
+
+        If CLng(folderData(4)) > maxLevel Then
+            maxLevel = CLng(folderData(4))
+        End If
+
+    Next key
+
+    '------------------------------------------------------
+    ' ファイルを直下フォルダへ集計
+    '------------------------------------------------------
+    fileCount = GetFileCount()
+
+    For i = 1 To fileCount
+
+        parentPath = _
+            CStr(GetFileValue(FC_PARENT, i))
+
+        If stats.Exists(parentPath) Then
+
+            statData = stats(parentPath)
+
+            fileSize = _
+                CDbl(GetFileValue(FC_SIZE, i))
+
+            yearsOld = _
+                CDbl(GetFileValue(FC_YEARS, i))
+
+            statData(IDX_FILE_COUNT) = _
+                CLng(statData(IDX_FILE_COUNT)) + 1
+
+            statData(IDX_TOTAL_BYTES) = _
+                CDbl(statData(IDX_TOTAL_BYTES)) + fileSize
+
+            '長期未更新：最長の設定年数以上
+            If yearsOld >= gOldYear3 Then
+
+                statData(IDX_OLD_COUNT) = _
+                    CLng(statData(IDX_OLD_COUNT)) + 1
+
+                statData(IDX_OLD_BYTES) = _
+                    CDbl(statData(IDX_OLD_BYTES)) + fileSize
+
+            End If
+
+            If CStr( _
+                GetFileValue(FC_CLEANUP, i)) = "○" Then
+
+                statData(IDX_CLEANUP_COUNT) = _
+                    CLng(statData(IDX_CLEANUP_COUNT)) + 1
+
+                statData(IDX_CLEANUP_BYTES) = _
+                    CDbl(statData(IDX_CLEANUP_BYTES)) + fileSize
+
+            End If
+
+            If CStr( _
+                GetFileValue(FC_DUPLICATE, i)) = "○" Then
+
+                statData(IDX_DUP_COUNT) = _
+                    CLng(statData(IDX_DUP_COUNT)) + 1
+
+                statData(IDX_DUP_BYTES) = _
+                    CDbl(statData(IDX_DUP_BYTES)) + fileSize
+
+            End If
+
+            '大容量×長期未更新は、整理候補ロジックと合わせて
+            '「判定2年以上」かつ「大容量」とする。
+            If yearsOld >= gOldYear2 And _
+               CStr(GetFileValue(FC_LARGE, i)) = "○" Then
+
+                statData(IDX_LARGE_OLD_COUNT) = _
+                    CLng(statData(IDX_LARGE_OLD_COUNT)) + 1
+
+                statData(IDX_LARGE_OLD_BYTES) = _
+                    CDbl(statData(IDX_LARGE_OLD_BYTES)) + fileSize
+
+            End If
+
+            If CStr(GetFileValue(FC_NAMEWARN, i)) = "○" Or _
+               CStr(GetFileValue(FC_PATHWARN, i)) = "○" Then
+
+                statData(IDX_WARN_COUNT) = _
+                    CLng(statData(IDX_WARN_COUNT)) + 1
+
+            End If
+
+            stats(parentPath) = statData
+
+        End If
+
+    Next i
+
+    '------------------------------------------------------
+    ' 子フォルダの値を親へ伝播
+    '------------------------------------------------------
+    For level = maxLevel To 1 Step -1
+
+        For Each key In keys
+
+            folderData = folders(key)
+
+            If CLng(folderData(4)) = level Then
+
+                parentPath = CStr(folderData(12))
+
+                If Len(parentPath) > 0 Then
+
+                    If stats.Exists(parentPath) Then
+
+                        statData = stats(CStr(key))
+                        parentData = stats(parentPath)
+
+                        For i = 1 To STAT_COUNT
+
+                            If i = IDX_TOTAL_BYTES Or _
+                               i = IDX_OLD_BYTES Or _
+                               i = IDX_CLEANUP_BYTES Or _
+                               i = IDX_DUP_BYTES Or _
+                               i = IDX_LARGE_OLD_BYTES Then
+
+                                parentData(i) = _
+                                    CDbl(parentData(i)) + _
+                                    CDbl(statData(i))
+
+                            Else
+
+                                parentData(i) = _
+                                    CLng(parentData(i)) + _
+                                    CLng(statData(i))
+
+                            End If
+
+                        Next i
+
+                        stats(parentPath) = parentData
+
+                    End If
+
+                End If
+
+            End If
+
+        Next key
+
+    Next level
+
+    '------------------------------------------------------
+    ' スコア算出
+    '------------------------------------------------------
+    For Each key In keys
+
+        statData = stats(CStr(key))
+
+        countRatio = SafeRatio( _
+            CDbl(statData(IDX_OLD_COUNT)), _
+            CDbl(statData(IDX_FILE_COUNT)))
+
+        byteRatio = SafeRatio( _
+            CDbl(statData(IDX_OLD_BYTES)), _
+            CDbl(statData(IDX_TOTAL_BYTES)))
+
+        severityOld = _
+            NormalizeHealthRatio( _
+                countRatio * 0.6 + _
+                byteRatio * 0.4, _
+                LIMIT_OLD)
+
+        countRatio = SafeRatio( _
+            CDbl(statData(IDX_CLEANUP_COUNT)), _
+            CDbl(statData(IDX_FILE_COUNT)))
+
+        byteRatio = SafeRatio( _
+            CDbl(statData(IDX_CLEANUP_BYTES)), _
+            CDbl(statData(IDX_TOTAL_BYTES)))
+
+        severityCleanup = _
+            NormalizeHealthRatio( _
+                countRatio * 0.6 + _
+                byteRatio * 0.4, _
+                LIMIT_CLEANUP)
+
+        countRatio = SafeRatio( _
+            CDbl(statData(IDX_DUP_COUNT)), _
+            CDbl(statData(IDX_FILE_COUNT)))
+
+        byteRatio = SafeRatio( _
+            CDbl(statData(IDX_DUP_BYTES)), _
+            CDbl(statData(IDX_TOTAL_BYTES)))
+
+        If gHashEnabled Then
+
+            severityDup = _
+                NormalizeHealthRatio( _
+                    countRatio * 0.4 + _
+                    byteRatio * 0.6, _
+                    LIMIT_DUP)
+
+        Else
+
+            'ハッシュ重複検出OFF時は重複を減点しない。
+            severityDup = 0#
+
+        End If
+
+        countRatio = SafeRatio( _
+            CDbl(statData(IDX_LARGE_OLD_COUNT)), _
+            CDbl(statData(IDX_FILE_COUNT)))
+
+        byteRatio = SafeRatio( _
+            CDbl(statData(IDX_LARGE_OLD_BYTES)), _
+            CDbl(statData(IDX_TOTAL_BYTES)))
+
+        severityLargeOld = _
+            NormalizeHealthRatio( _
+                countRatio * 0.4 + _
+                byteRatio * 0.6, _
+                LIMIT_LARGE_OLD)
+
+        countRatio = SafeRatio( _
+            CDbl(statData(IDX_WARN_COUNT)), _
+            CDbl(statData(IDX_FILE_COUNT)))
+
+        severityWarn = _
+            NormalizeHealthRatio( _
+                countRatio, _
+                LIMIT_WARN)
+
+        countRatio = SafeRatio( _
+            CDbl(statData(IDX_EMPTY_FOLDER_COUNT)), _
+            CDbl(statData(IDX_FOLDER_COUNT)))
+
+        severityEmpty = _
+            NormalizeHealthRatio( _
+                countRatio, _
+                LIMIT_EMPTY)
+
+        penaltyOld = severityOld * gHealthWeightOld
+        penaltyCleanup = severityCleanup * gHealthWeightCleanup
+        penaltyDup = severityDup * gHealthWeightDuplicate
+        penaltyLargeOld = severityLargeOld * gHealthWeightLargeOld
+        penaltyWarn = severityWarn * gHealthWeightWarning
+        penaltyEmpty = severityEmpty * gHealthWeightEmpty
+
+        score = _
+            100# - _
+            penaltyOld - _
+            penaltyCleanup - _
+            penaltyDup - _
+            penaltyLargeOld - _
+            penaltyWarn - _
+            penaltyEmpty
+
+        If score < 0# Then score = 0#
+        If score > 100# Then score = 100#
+
+        score = Round(score, 1)
+        rank = GetHealthRank(score)
+
+        reason = BuildHealthReason( _
+            penaltyOld, _
+            penaltyCleanup, _
+            penaltyDup, _
+            penaltyLargeOld, _
+            penaltyWarn, _
+            penaltyEmpty)
+
+        If Not gHashEnabled Then
+
+            If Len(reason) > 0 Then
+                reason = reason & " / "
+            End If
+
+            reason = reason & "※重複評価OFF"
+
+        End If
+
+        healthData(1) = score
+        healthData(2) = rank
+        healthData(3) = reason
+
+        result.Add CStr(key), healthData
+
+    Next key
+
+    Set BuildFolderHealthData = result
+
+End Function
+
+
+Private Function SafeRatio( _
+    ByVal numerator As Double, _
+    ByVal denominator As Double) As Double
+
+    If denominator <= 0# Then
+        SafeRatio = 0#
+    Else
+        SafeRatio = numerator / denominator
+    End If
+
+End Function
+
+
+Private Function NormalizeHealthRatio( _
+    ByVal actualRatio As Double, _
+    ByVal badLimit As Double) As Double
+
+    If actualRatio <= 0# Then
+        NormalizeHealthRatio = 0#
+        Exit Function
+    End If
+
+    If badLimit <= 0# Then
+        NormalizeHealthRatio = 1#
+        Exit Function
+    End If
+
+    NormalizeHealthRatio = _
+        actualRatio / badLimit
+
+    If NormalizeHealthRatio > 1# Then
+        NormalizeHealthRatio = 1#
+    End If
+
+End Function
+
+
+Private Function GetHealthRank( _
+    ByVal score As Double) As String
+
+    Select Case score
+
+        Case Is >= 90#
+            GetHealthRank = "A"
+
+        Case Is >= 75#
+            GetHealthRank = "B"
+
+        Case Is >= 60#
+            GetHealthRank = "C"
+
+        Case Is >= 40#
+            GetHealthRank = "D"
+
+        Case Else
+            GetHealthRank = "E"
+
+    End Select
+
+End Function
+
+
+Private Function BuildHealthReason( _
+    ByVal penaltyOld As Double, _
+    ByVal penaltyCleanup As Double, _
+    ByVal penaltyDup As Double, _
+    ByVal penaltyLargeOld As Double, _
+    ByVal penaltyWarn As Double, _
+    ByVal penaltyEmpty As Double) As String
+
+    Dim names(1 To 6) As String
+    Dim values(1 To 6) As Double
+
+    Dim i As Long
+    Dim j As Long
+    Dim maxIndex As Long
+
+    Dim tempName As String
+    Dim tempValue As Double
+    Dim result As String
+
+    names(1) = "長期未更新"
+    values(1) = penaltyOld
+
+    names(2) = "整理候補"
+    values(2) = penaltyCleanup
+
+    names(3) = "重複"
+    values(3) = penaltyDup
+
+    names(4) = "大容量×長期未更新"
+    values(4) = penaltyLargeOld
+
+    names(5) = "パス／ファイル名警告"
+    values(5) = penaltyWarn
+
+    names(6) = "空フォルダ"
+    values(6) = penaltyEmpty
+
+    '減点の大きい順に並べる。
+    For i = 1 To 5
+
+        maxIndex = i
+
+        For j = i + 1 To 6
+
+            If values(j) > values(maxIndex) Then
+                maxIndex = j
+            End If
+
+        Next j
+
+        If maxIndex <> i Then
+
+            tempValue = values(i)
+            values(i) = values(maxIndex)
+            values(maxIndex) = tempValue
+
+            tempName = names(i)
+            names(i) = names(maxIndex)
+            names(maxIndex) = tempName
+
+        End If
+
+    Next i
+
+    '上位3要因を表示。減点0は表示しない。
+    For i = 1 To 3
+
+        If values(i) > 0# Then
+
+            If Len(result) > 0 Then
+                result = result & " / "
+            End If
+
+            result = _
+                result & _
+                names(i) & _
+                " -" & _
+                Format$(values(i), "0.0")
+
+        End If
+
+    Next i
+
+    If Len(result) = 0 Then
+        result = "減点要因なし"
+    End If
+
+    BuildHealthReason = result
+
+End Function
+
+
+'==========================================================
+' ErrorLog出力
+'==========================================================
+Private Sub OutputErrorLog()
+
+    Dim ws As Worksheet
+    Dim data() As Variant
+
+    Dim errorCount As Long
+    Dim r As Long
+    Dim c As Long
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_ERROR)
+
+    DeleteExistingTable ws, TABLE_ERROR
+
+    ws.Range( _
+        "A2:E" & _
+        ws.Rows.Count).ClearContents
+
+    errorCount = GetErrorCount()
+
+    If errorCount = 0 Then Exit Sub
+
+    ReDim data( _
+        1 To errorCount, _
+        1 To 5)
+
+    For r = 1 To errorCount
+
+        For c = 1 To 5
+            data(r, c) = _
+                GetErrorValue(c, r)
+        Next c
+
+    Next r
+
+    ws.Range("A2").Resize( _
+        errorCount, _
+        5).value = data
+
+    ws.Columns("A").NumberFormat = _
+        "yyyy/mm/dd hh:mm:ss"
+
+    CreateTable _
+        ws, _
+        ws.Range("A1").Resize( _
+            errorCount + 1, _
+            5), _
+        TABLE_ERROR
+
+End Sub
+
+
+'==========================================================
+' テーブル
+'==========================================================
+Private Sub DeleteExistingTable( _
+    ByVal ws As Worksheet, _
+    ByVal tableName As String)
+
+    Dim lo As ListObject
+    Dim oldDataRange As Range
+
+    If ws Is Nothing Then Exit Sub
+    If Len(tableName) = 0 Then Exit Sub
+
+    Set lo = Nothing
+    Set oldDataRange = Nothing
+
+    On Error Resume Next
+    Set lo = ws.ListObjects(tableName)
+    On Error GoTo 0
+
+    If Not lo Is Nothing Then
+
+        '--------------------------------------------------
+        ' Unlistするとテーブル自体は解除されるが、
+        ' 旧テーブルの書式（縞模様・罫線など）は
+        ' 通常セル側に残る。
+        '
+        ' 大きいスキャンの後に小さいスキャンを行うと、
+        ' この残存書式のせいで旧テーブル範囲まで
+        ' テーブルが続いているように見えるため、
+        ' 旧データ部分の書式を明示的に消す。
+        '--------------------------------------------------
+        If Not lo.DataBodyRange Is Nothing Then
+            Set oldDataRange = lo.DataBodyRange
+        End If
+
+        lo.Unlist
+
+        If Not oldDataRange Is Nothing Then
+            oldDataRange.ClearFormats
+        End If
+
+    End If
+
+End Sub
+
+
+Private Sub CreateTable( _
+    ByVal ws As Worksheet, _
+    ByVal sourceRange As Range, _
+    ByVal tableName As String)
+
+    Dim lo As ListObject
+
+    Set lo = _
+        ws.ListObjects.Add( _
+            xlSrcRange, _
+            sourceRange, _
+            , _
+            xlYes)
+
+    lo.Name = tableName
+    lo.TableStyle = "TableStyleMedium2"
+
+End Sub
+
+
+'==========================================================
+' Dashboard更新
+'==========================================================
+Private Sub UpdateDashboard()
+
+    Dim ws As Worksheet
+    Dim i As Long
+
+    Dim totalSize As Double
+    Dim cleanupSize As Double
+    Dim yearsOld As Double
+
+    Dim old1 As Long
+    Dim old2 As Long
+    Dim old3 As Long
+
+    Dim largeCount As Long
+    Dim duplicateCount As Long
+    Dim cleanupCount As Long
+    Dim emptyFolderCount As Long
+
+    Dim folders As Object
+    Dim key As Variant
+    Dim folderData As Variant
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_DASHBOARD)
+
+    For i = 1 To GetFileCount()
+
+        totalSize = _
+            totalSize + _
+            CDbl(GetFileValue(FC_SIZE, i))
+
+        yearsOld = _
+            CDbl(GetFileValue(FC_YEARS, i))
+
+        If yearsOld >= gOldYear1 Then
+            old1 = old1 + 1
+        End If
+
+        If yearsOld >= gOldYear2 Then
+            old2 = old2 + 1
+        End If
+
+        If yearsOld >= gOldYear3 Then
+            old3 = old3 + 1
+        End If
+
+        If CStr( _
+            GetFileValue(FC_LARGE, i)) = "○" Then
+
+            largeCount = largeCount + 1
+
+        End If
+
+        If CStr( _
+            GetFileValue(FC_DUPLICATE, i)) = "○" Then
+
+            duplicateCount = duplicateCount + 1
+
+        End If
+
+        If CStr( _
+            GetFileValue(FC_CLEANUP, i)) = "○" Then
+
+            cleanupCount = cleanupCount + 1
+
+            cleanupSize = _
+                cleanupSize + _
+                CDbl(GetFileValue(FC_SIZE, i))
+
+        End If
+
+    Next i
+
+    Set folders = GetFolderDictionary()
+
+    If Not folders Is Nothing Then
+
+        For Each key In folders.keys
+
+            folderData = folders(key)
+
+            If CBool(folderData(10)) Then
+                emptyFolderCount = _
+                    emptyFolderCount + 1
+            End If
+
+        Next key
+
+    End If
+
+    ws.Range("C10").value = gScanRoot
+    ws.Range("C11").value = gScanEnd
+
+    ws.Range("C11").NumberFormat = _
+        "yyyy/mm/dd hh:mm:ss"
+
+    ws.Range("C12").value = _
+        FormatElapsedSeconds( _
+            DateDiff( _
+                "s", _
+                gScanStart, _
+                gScanEnd))
+
+    SetCardValue _
+        ws, "B14", _
+        Format$(GetFileCount(), "#,##0")
+
+    SetCardValue _
+        ws, "E14", _
+        Format$(GetFolderCount(), "#,##0")
+
+    SetCardValue _
+        ws, "H14", _
+        FormatFileSize(totalSize)
+
+    SetCardValue _
+        ws, "B18", _
+        Format$(old1, "#,##0")
+
+    SetCardValue _
+        ws, "E18", _
+        Format$(old2, "#,##0")
+
+    SetCardValue _
+        ws, "H18", _
+        Format$(old3, "#,##0")
+
+    SetCardValue _
+        ws, "B22", _
+        Format$(largeCount, "#,##0")
+
+    SetCardValue _
+        ws, "E22", _
+        Format$(duplicateCount, "#,##0")
+
+    SetCardValue _
+        ws, "H22", _
+        Format$(emptyFolderCount, "#,##0")
+
+    SetCardValue _
+        ws, "B26", _
+        Format$(cleanupCount, "#,##0")
+
+    SetCardValue _
+        ws, "E26", _
+        FormatFileSize(cleanupSize)
+
+    SetCardValue _
+        ws, "H26", _
+        Format$(GetErrorCount(), "#,##0")
+
+End Sub
+
+
+Private Sub SetCardValue( _
+    ByVal ws As Worksheet, _
+    ByVal cardTopLeft As String, _
+    ByVal valueText As String)
+
+    Dim currentValue As String
+    Dim p As Long
+    Dim titleText As String
+
+    currentValue = _
+        CStr(ws.Range(cardTopLeft).value)
+
+    p = InStr(currentValue, vbLf)
+
+    If p > 0 Then
+        titleText = _
+            Left$(currentValue, p - 1)
+    Else
+        titleText = currentValue
+    End If
+
+    ws.Range(cardTopLeft).value = _
+        titleText & vbLf & valueText
+
+End Sub
+
+
+Private Function FormatElapsedSeconds( _
+    ByVal totalSeconds As Long) As String
+
+    Dim hours As Long
+    Dim minutes As Long
+    Dim seconds As Long
+
+    hours = totalSeconds \ 3600
+
+    minutes = _
+        (totalSeconds Mod 3600) \ 60
+
+    seconds = _
+        totalSeconds Mod 60
+
+    FormatElapsedSeconds = _
+        Format$(hours, "00") & ":" & _
+        Format$(minutes, "00") & ":" & _
+        Format$(seconds, "00")
+
+End Function
+
+
+'==========================================================
+' FileListフィルター
+'==========================================================
+Public Sub ShowAllFiles()
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FILELIST)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FILE)
+
+    ClearTableFilter lo
+
+    ws.Range("C13").value = "すべて"
+
+    UpdateFileDisplayCount
+
+End Sub
+
+
+Public Sub FilterFilesByText( _
+    ByVal headerName As String, _
+    ByVal criteria As String, _
+    ByVal displayName As String)
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim fieldNumber As Long
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FILELIST)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FILE)
+
+    ClearTableFilter lo
+
+    fieldNumber = _
+        lo.ListColumns(headerName).Index
+
+    lo.Range.AutoFilter _
+        Field:=fieldNumber, _
+        Criteria1:=criteria
+
+    ws.Range("C13").value = displayName
+
+    UpdateFileDisplayCount
+
+End Sub
+
+
+Public Sub FilterFilesByNumber( _
+    ByVal headerName As String, _
+    ByVal minimumValue As Double, _
+    ByVal displayName As String)
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim fieldNumber As Long
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FILELIST)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FILE)
+
+    ClearTableFilter lo
+
+    fieldNumber = _
+        lo.ListColumns(headerName).Index
+
+    lo.Range.AutoFilter _
+        Field:=fieldNumber, _
+        Criteria1:=">=" & CStr(minimumValue)
+
+    ws.Range("C13").value = displayName
+
+    UpdateFileDisplayCount
+
+End Sub
+
+
+Private Sub UpdateFileDisplayCount()
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+
+    Dim totalCount As Long
+    Dim visibleCount As Long
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FILELIST)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FILE)
+
+    totalCount = lo.ListRows.Count
+
+    visibleCount = _
+        GetVisibleTableRowCount(lo)
+
+    ws.Range("C14").value = _
+        Format$(visibleCount, "#,##0") & _
+        " / " & _
+        Format$(totalCount, "#,##0") & _
+        " 件"
+
+End Sub
+
+
+'==========================================================
+' FolderSummaryフィルター
+'==========================================================
+Public Sub ShowAllFolders()
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FOLDER)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FOLDER)
+
+    ClearTableFilter lo
+
+    SortFoldersNormal
+
+    ws.Range("C12").value = "すべて"
+
+    UpdateFolderDisplayCount
+
+End Sub
+
+
+Public Sub FilterFoldersByLevel( _
+    ByVal levelNumber As Long)
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+
+    Dim fieldNumber As Long
+    Dim displayName As String
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FOLDER)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FOLDER)
+
+    ClearTableFilter lo
+
+    SortFoldersNormal
+
+    fieldNumber = _
+        lo.ListColumns("階層").Index
+
+    lo.Range.AutoFilter _
+        Field:=fieldNumber, _
+        Criteria1:=CStr(levelNumber)
+
+    If levelNumber = 0 Then
+        displayName = "起点フォルダ"
+    Else
+        displayName = _
+            "第" & CStr(levelNumber) & "階層"
+    End If
+
+    ws.Range("C12").value = displayName
+
+    UpdateFolderDisplayCount
+
+End Sub
+
+
+'==========================================================
+' 健全度ランクフィルター
+'==========================================================
+Public Sub ShowHealthRankA()
+    FilterFoldersByHealthRank "A"
+End Sub
+
+Public Sub ShowHealthRankB()
+    FilterFoldersByHealthRank "B"
+End Sub
+
+Public Sub ShowHealthRankC()
+    FilterFoldersByHealthRank "C"
+End Sub
+
+Public Sub ShowHealthRankD()
+    FilterFoldersByHealthRank "D"
+End Sub
+
+Public Sub ShowHealthRankE()
+    FilterFoldersByHealthRank "E"
+End Sub
+
+
+Private Sub FilterFoldersByHealthRank( _
+    ByVal rankValue As String)
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim fieldNumber As Long
+
+    Set ws = ThisWorkbook.Worksheets(SHEET_FOLDER)
+    ws.Activate
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FOLDER)
+
+    ClearTableFilter lo
+
+    fieldNumber = _
+        lo.ListColumns("ランク").Index
+
+    lo.Range.AutoFilter _
+        Field:=fieldNumber, _
+        Criteria1:=rankValue
+
+    SortFoldersByHealth lo
+
+    ws.Range("C12").Value = _
+        "健全度 " & rankValue & " ランク"
+
+    UpdateFolderDisplayCount
+
+End Sub
+
+
+Private Sub SortFoldersByHealth( _
+    ByVal lo As ListObject)
+
+    If lo.DataBodyRange Is Nothing Then Exit Sub
+
+    With lo.Sort
+        .SortFields.Clear
+        .SortFields.Add _
+            Key:=lo.ListColumns( _
+                "健全度スコア").DataBodyRange, _
+            SortOn:=xlSortOnValues, _
+            Order:=xlAscending, _
+            DataOption:=xlSortNormal
+        .SortFields.Add _
+            Key:=lo.ListColumns( _
+                "相対パス").DataBodyRange, _
+            SortOn:=xlSortOnValues, _
+            Order:=xlAscending, _
+            DataOption:=xlSortNormal
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .Apply
+    End With
+
+End Sub
+
+'==========================================================
+' 整理候補フォルダ
+'==========================================================
+Public Sub ShowCleanupFolders()
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim fieldNumber As Long
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FOLDER)
+
+    ws.Activate
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FOLDER)
+
+    ClearTableFilter lo
+
+    fieldNumber = _
+        lo.ListColumns( _
+            "整理候補ファイル数").Index
+
+    lo.Range.AutoFilter _
+        Field:=fieldNumber, _
+        Criteria1:=">0"
+
+    SortCleanupFolders lo
+
+    ws.Range("C12").value = _
+        "整理候補あり（直下件数の多い順）"
+
+    UpdateFolderDisplayCount
+
+End Sub
+
+
+Private Sub SortCleanupFolders( _
+    ByVal lo As ListObject)
+
+    If lo.DataBodyRange Is Nothing Then Exit Sub
+
+    With lo.Sort
+
+        .SortFields.Clear
+
+        .SortFields.Add _
+            key:=lo.ListColumns( _
+                "整理候補ファイル数").DataBodyRange, _
+            SortOn:=xlSortOnValues, _
+            Order:=xlDescending, _
+            DataOption:=xlSortNormal
+
+        .SortFields.Add _
+            key:=lo.ListColumns( _
+                "整理候補容量(MB)").DataBodyRange, _
+            SortOn:=xlSortOnValues, _
+            Order:=xlDescending, _
+            DataOption:=xlSortNormal
+
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+
+        .Apply
+
+    End With
+
+End Sub
+
+
+'==========================================================
+' FolderSummary通常順
+'==========================================================
+Private Sub SortFoldersNormal()
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FOLDER)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FOLDER)
+
+    If lo.DataBodyRange Is Nothing Then Exit Sub
+
+    With lo.Sort
+
+        .SortFields.Clear
+
+        .SortFields.Add _
+            key:=lo.ListColumns( _
+                "階層").DataBodyRange, _
+            SortOn:=xlSortOnValues, _
+            Order:=xlAscending, _
+            DataOption:=xlSortNormal
+
+        .SortFields.Add _
+            key:=lo.ListColumns( _
+                "相対パス").DataBodyRange, _
+            SortOn:=xlSortOnValues, _
+            Order:=xlAscending, _
+            DataOption:=xlSortNormal
+
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+
+        .Apply
+
+    End With
+
+End Sub
+
+
+Private Sub UpdateFolderDisplayCount()
+
+    Dim ws As Worksheet
+    Dim lo As ListObject
+
+    Dim totalCount As Long
+    Dim visibleCount As Long
+
+    Set ws = _
+        ThisWorkbook.Worksheets(SHEET_FOLDER)
+
+    If ws.ListObjects.Count = 0 Then Exit Sub
+
+    Set lo = ws.ListObjects(TABLE_FOLDER)
+
+    totalCount = lo.ListRows.Count
+
+    visibleCount = _
+        GetVisibleTableRowCount(lo)
+
+    ws.Range("C13").value = _
+        Format$(visibleCount, "#,##0") & _
+        " / " & _
+        Format$(totalCount, "#,##0") & _
+        " フォルダ"
+
+End Sub
+
+
+'==========================================================
+' 共通フィルター
+'==========================================================
+Private Sub ClearTableFilter( _
+    ByVal lo As ListObject)
+
+    On Error Resume Next
+
+    If lo.AutoFilter.FilterMode Then
+        lo.AutoFilter.ShowAllData
+    End If
+
+    On Error GoTo 0
+
+End Sub
+
+
+Private Function GetVisibleTableRowCount( _
+    ByVal lo As ListObject) As Long
+
+    Dim area As Range
+    Dim visibleRange As Range
+
+    If lo.DataBodyRange Is Nothing Then
+        Exit Function
+    End If
+
+    On Error Resume Next
+
+    Set visibleRange = _
+        lo.DataBodyRange.Columns(1). _
+        SpecialCells(xlCellTypeVisible)
+
+    On Error GoTo 0
+
+    If visibleRange Is Nothing Then
+        Exit Function
+    End If
+
+    For Each area In visibleRange.Areas
+
+        GetVisibleTableRowCount = _
+            GetVisibleTableRowCount + _
+            area.Rows.Count
+
+    Next area
+
+End Function
+
