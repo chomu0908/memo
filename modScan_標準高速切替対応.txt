@@ -1,0 +1,2688 @@
+﻿Option Explicit
+
+'==========================================================
+' Win32 API 高速スキャン用
+'==========================================================
+#If VBA7 Then
+Private Declare PtrSafe Function FindFirstFileW Lib "kernel32" ( _
+    ByVal lpFileName As LongPtr, _
+    lpFindFileData As WIN32_FIND_DATAW) As LongPtr
+Private Declare PtrSafe Function FindNextFileW Lib "kernel32" ( _
+    ByVal hFindFile As LongPtr, _
+    lpFindFileData As WIN32_FIND_DATAW) As Long
+Private Declare PtrSafe Function FindClose Lib "kernel32" ( _
+    ByVal hFindFile As LongPtr) As Long
+Private Declare PtrSafe Function FileTimeToLocalFileTime Lib "kernel32" ( _
+    lpFileTime As FILETIME, _
+    lpLocalFileTime As FILETIME) As Long
+Private Declare PtrSafe Function FileTimeToSystemTime Lib "kernel32" ( _
+    lpFileTime As FILETIME, _
+    lpSystemTime As SYSTEMTIME) As Long
+#Else
+Private Declare Function FindFirstFileW Lib "kernel32" ( _
+    ByVal lpFileName As Long, _
+    lpFindFileData As WIN32_FIND_DATAW) As Long
+Private Declare Function FindNextFileW Lib "kernel32" ( _
+    ByVal hFindFile As Long, _
+    lpFindFileData As WIN32_FIND_DATAW) As Long
+Private Declare Function FindClose Lib "kernel32" ( _
+    ByVal hFindFile As Long) As Long
+Private Declare Function FileTimeToLocalFileTime Lib "kernel32" ( _
+    lpFileTime As FILETIME, _
+    lpLocalFileTime As FILETIME) As Long
+Private Declare Function FileTimeToSystemTime Lib "kernel32" ( _
+    lpFileTime As FILETIME, _
+    lpSystemTime As SYSTEMTIME) As Long
+#End If
+
+Private Type FILETIME
+    dwLowDateTime As Long
+    dwHighDateTime As Long
+End Type
+
+Private Type SYSTEMTIME
+    wYear As Integer
+    wMonth As Integer
+    wDayOfWeek As Integer
+    wDay As Integer
+    wHour As Integer
+    wMinute As Integer
+    wSecond As Integer
+    wMilliseconds As Integer
+End Type
+
+Private Type WIN32_FIND_DATAW
+    dwFileAttributes As Long
+    ftCreationTime As FILETIME
+    ftLastAccessTime As FILETIME
+    ftLastWriteTime As FILETIME
+    nFileSizeHigh As Long
+    nFileSizeLow As Long
+    dwReserved0 As Long
+    dwReserved1 As Long
+    cFileName(0 To 259) As Integer
+    cAlternateFileName(0 To 13) As Integer
+End Type
+
+Private Const FILE_ATTRIBUTE_DIRECTORY As Long = &H10
+Private Const ERROR_NO_MORE_FILES As Long = 18
+
+
+'==========================================================
+' modScan
+'
+' 高速化版
+'
+' 主な改善点
+' ・10万件級を想定
+' ・配列拡張をReDim Preserve化
+' ・フォルダ階層のO(n^2)ソートを完全廃止
+' ・階層別Collectionで子→親集計
+' ・UI更新は時間ベースで間引く
+' ・DoEventsも時間ベース
+' ・StatusBar更新を間引く
+' ・ハッシュOFF時は重複処理を完全スキップ
+' ・整理候補集計でも定期的にExcelへ制御を返す
+'==========================================================
+
+
+'==========================================================
+' 定数
+'==========================================================
+Private Const FILE_COLUMN_COUNT As Long = 20
+
+'10万件級では5000件ごとの拡張は細かすぎるため拡大
+Private Const FILE_GROW_SIZE As Long = 20000
+
+Private Const ERROR_COLUMN_COUNT As Long = 5
+Private Const ERROR_GROW_SIZE As Long = 500
+
+'UIを更新する最短間隔（秒）
+Private Const UI_UPDATE_INTERVAL As Double = 0.25
+
+'StatusBarはUserFormよりさらに低頻度
+Private Const STATUS_UPDATE_INTERVAL As Double = 0.5
+
+'フォルダキューの拡張単位
+Private Const QUEUE_GROW_SIZE As Long = 4096
+
+
+'==========================================================
+' File配列列番号
+'==========================================================
+Public Const FC_NAME As Long = 1
+Public Const FC_EXT As Long = 2
+Public Const FC_CATEGORY As Long = 3
+Public Const FC_SIZE As Long = 4
+Public Const FC_SIZE_TEXT As Long = 5
+Public Const FC_CREATED As Long = 6
+Public Const FC_MODIFIED As Long = 7
+Public Const FC_DAYS As Long = 8
+Public Const FC_YEARS As Long = 9
+Public Const FC_PARENT As Long = 10
+Public Const FC_LEVEL As Long = 11
+Public Const FC_RELATIVE As Long = 12
+Public Const FC_FULLPATH As Long = 13
+Public Const FC_OLD As Long = 14
+Public Const FC_LARGE As Long = 15
+Public Const FC_NAMEWARN As Long = 16
+Public Const FC_PATHWARN As Long = 17
+Public Const FC_DUPLICATE As Long = 18
+Public Const FC_CLEANUP As Long = 19
+Public Const FC_REASON As Long = 20
+
+
+'==========================================================
+' Folder配列
+'
+'  1  フォルダ名
+'  2  フルパス
+'  3  相対パス
+'  4  階層
+'  5  直下ファイル数
+'  6  直下ファイル容量
+'  7  配下総ファイル数
+'  8  配下総容量
+'  9  直下サブフォルダ数
+' 10  空フォルダ
+' 11  最新更新日時
+' 12  親フォルダ
+' 13  直下整理候補ファイル数
+' 14  直下整理候補容量
+' 15  配下整理候補ファイル数
+' 16  配下整理候補容量
+'==========================================================
+Private Const FOLDER_DATA_COUNT As Long = 16
+
+
+'==========================================================
+' 内部データ
+'==========================================================
+Private mFiles() As Variant
+Private mFileCount As Long
+Private mFileCapacity As Long
+
+Private mErrors() As Variant
+Private mErrorCount As Long
+Private mErrorCapacity As Long
+
+Private mFolders As Object
+Private mFSO As Object
+
+'階層ごとのフォルダパスを保持
+'Key = 階層番号
+'Value = Collection
+Private mLevelBuckets As Object
+
+Private mMaxFolderLevel As Long
+
+'UI更新制御
+Private mLastUiUpdate As Double
+Private mLastStatusUpdate As Double
+
+
+'==========================================================
+' 初期化
+'==========================================================
+Public Sub ResetScanData()
+
+    mFileCount = 0
+    mFileCapacity = FILE_GROW_SIZE
+
+    ReDim mFiles( _
+        1 To FILE_COLUMN_COUNT, _
+        1 To mFileCapacity)
+
+    mErrorCount = 0
+    mErrorCapacity = ERROR_GROW_SIZE
+
+    ReDim mErrors( _
+        1 To ERROR_COLUMN_COUNT, _
+        1 To mErrorCapacity)
+
+    Set mFolders = _
+        CreateObject("Scripting.Dictionary")
+
+    mFolders.CompareMode = vbTextCompare
+
+    Set mLevelBuckets = _
+        CreateObject("Scripting.Dictionary")
+
+    Set mFSO = _
+        CreateObject("Scripting.FileSystemObject")
+
+    mMaxFolderLevel = 0
+
+    mLastUiUpdate = Timer
+    mLastStatusUpdate = Timer
+
+End Sub
+
+
+'==========================================================
+' フォルダ走査入口
+' Settingsの高速スキャン設定で方式を切り替える。
+'==========================================================
+Public Sub ScanFolderTree(ByVal rootPath As String)
+
+    If gFastScanEnabled Then
+
+        ScanFolderTreeFast rootPath
+
+    Else
+
+        ScanFolderTreeStandard rootPath
+
+    End If
+
+End Sub
+
+
+'==========================================================
+' フォルダ走査
+'
+' Collection.Remove(1)方式も廃止。
+' 配列キューを使う。
+'==========================================================
+Private Sub ScanFolderTreeStandard(ByVal rootPath As String)
+
+    Dim queue() As String
+    Dim queueCapacity As Long
+    Dim queueHead As Long
+    Dim queueTail As Long
+
+    Dim currentPath As String
+
+    Dim currentFolder As Object
+    Dim subFolder As Object
+    Dim fileObject As Object
+
+    Dim folderData As Variant
+
+    Dim level As Long
+    Dim relativePath As String
+
+    queueCapacity = QUEUE_GROW_SIZE
+
+    ReDim queue(1 To queueCapacity)
+
+    queueHead = 1
+    queueTail = 1
+
+    queue(1) = rootPath
+
+    Do While queueHead <= queueTail
+
+        currentPath = queue(queueHead)
+        queueHead = queueHead + 1
+
+        Set currentFolder = Nothing
+
+        On Error Resume Next
+
+        Err.Clear
+
+        Set currentFolder = _
+            mFSO.GetFolder(currentPath)
+
+        If Err.Number <> 0 Or _
+           currentFolder Is Nothing Then
+
+            AddScanError _
+                "フォルダ取得", _
+                currentPath, _
+                Err.Number, _
+                Err.Description
+
+            Err.Clear
+
+            On Error GoTo 0
+
+            GoTo ContinueLoop
+
+        End If
+
+        On Error GoTo 0
+
+        level = _
+            GetFolderLevel( _
+                currentPath, _
+                rootPath)
+
+        relativePath = _
+            GetRelativePath( _
+                currentPath, _
+                rootPath)
+
+        EnsureFolderRecord _
+            currentFolder, _
+            relativePath, _
+            level
+
+        PulseUI _
+            "フォルダを走査しています", _
+            currentPath, _
+            mFileCount, _
+            False
+
+        '==================================================
+        ' ファイル列挙
+        '==================================================
+        On Error Resume Next
+
+        Err.Clear
+
+        For Each fileObject In currentFolder.Files
+
+            If Err.Number <> 0 Then
+
+                AddScanError _
+                    "ファイル列挙", _
+                    currentPath, _
+                    Err.Number, _
+                    Err.Description
+
+                Err.Clear
+
+                Exit For
+
+            End If
+
+            ProcessFile _
+                fileObject, _
+                rootPath, _
+                level
+
+            PulseUI _
+                "ファイルを走査しています", _
+                currentPath, _
+                mFileCount, _
+                False
+
+        Next fileObject
+
+        If Err.Number <> 0 Then
+
+            AddScanError _
+                "ファイル列挙", _
+                currentPath, _
+                Err.Number, _
+                Err.Description
+
+            Err.Clear
+
+        End If
+
+        On Error GoTo 0
+
+
+        '==================================================
+        ' サブフォルダ列挙
+        '==================================================
+        On Error Resume Next
+
+        Err.Clear
+
+        folderData = _
+            mFolders(currentPath)
+
+        For Each subFolder In currentFolder.SubFolders
+
+            If Err.Number <> 0 Then
+
+                AddScanError _
+                    "サブフォルダ列挙", _
+                    currentPath, _
+                    Err.Number, _
+                    Err.Description
+
+                Err.Clear
+
+                Exit For
+
+            End If
+
+            queueTail = queueTail + 1
+
+            If queueTail > queueCapacity Then
+
+                queueCapacity = _
+                    queueCapacity + QUEUE_GROW_SIZE
+
+                ReDim Preserve queue( _
+                    1 To queueCapacity)
+
+            End If
+
+            queue(queueTail) = _
+                CStr(subFolder.Path)
+
+            folderData(9) = _
+                CLng(folderData(9)) + 1
+
+        Next subFolder
+
+        If Err.Number <> 0 Then
+
+            AddScanError _
+                "サブフォルダ列挙", _
+                currentPath, _
+                Err.Number, _
+                Err.Description
+
+            Err.Clear
+
+        End If
+
+        mFolders(currentPath) = folderData
+
+        On Error GoTo 0
+
+
+ContinueLoop:
+
+        Set currentFolder = Nothing
+
+    Loop
+
+    PulseUI _
+        "フォルダ走査が完了しました", _
+        rootPath, _
+        mFileCount, _
+        True
+
+End Sub
+
+
+'==========================================================
+' Win32 API 高速フォルダ走査
+' ファイルとサブフォルダを1回の列挙で取得する。
+'==========================================================
+Private Sub ScanFolderTreeFast(ByVal rootPath As String)
+
+    Dim queue() As String
+    Dim queueCapacity As Long
+    Dim queueHead As Long
+    Dim queueTail As Long
+
+    Dim currentPath As String
+    Dim childPath As String
+    Dim relativePath As String
+    Dim searchPath As String
+    Dim itemName As String
+
+    Dim level As Long
+    Dim folderData As Variant
+    Dim subFolderCount As Long
+    Dim findData As WIN32_FIND_DATAW
+    Dim hasItem As Boolean
+    Dim isFolder As Boolean
+    Dim lastDllError As Long
+
+#If VBA7 Then
+    Dim hFind As LongPtr
+#Else
+    Dim hFind As Long
+#End If
+
+    queueCapacity = QUEUE_GROW_SIZE
+    ReDim queue(1 To queueCapacity)
+
+    queueHead = 1
+    queueTail = 1
+    queue(1) = rootPath
+
+    Do While queueHead <= queueTail
+
+        currentPath = queue(queueHead)
+        queueHead = queueHead + 1
+
+        level = _
+            GetFolderLevel( _
+                currentPath, _
+                rootPath)
+
+        relativePath = _
+            GetRelativePath( _
+                currentPath, _
+                rootPath)
+
+        EnsureFolderRecordFast _
+            currentPath, _
+            relativePath, _
+            level
+
+        PulseUI _
+            "フォルダを走査しています（高速）", _
+            currentPath, _
+            mFileCount, _
+            False
+
+        subFolderCount = 0
+
+        searchPath = _
+            CombinePathFast( _
+                currentPath, _
+                "*")
+
+        hFind = _
+            FindFirstFileW( _
+                StrPtr(searchPath), _
+                findData)
+
+        If hFind = -1 Then
+
+            lastDllError = Err.LastDllError
+
+            AddScanError _
+                "フォルダ列挙（高速）", _
+                currentPath, _
+                lastDllError, _
+                "FindFirstFileWに失敗しました。Windowsエラー=" & _
+                CStr(lastDllError)
+
+            GoTo ContinueLoopFast
+
+        End If
+
+        hasItem = True
+
+        Do While hasItem
+
+            itemName = _
+                GetFindFileNameFast(findData)
+
+            If Len(itemName) > 0 And _
+               itemName <> "." And _
+               itemName <> ".." Then
+
+                isFolder = _
+                    ((findData.dwFileAttributes And _
+                      FILE_ATTRIBUTE_DIRECTORY) <> 0)
+
+                If isFolder Then
+
+                    childPath = _
+                        CombinePathFast( _
+                            currentPath, _
+                            itemName)
+
+                    queueTail = queueTail + 1
+
+                    If queueTail > queueCapacity Then
+
+                        queueCapacity = _
+                            queueCapacity + QUEUE_GROW_SIZE
+
+                        ReDim Preserve queue( _
+                            1 To queueCapacity)
+
+                    End If
+
+                    queue(queueTail) = childPath
+
+                    subFolderCount = _
+                        subFolderCount + 1
+
+                Else
+
+                    ProcessFileFast _
+                        itemName, _
+                        currentPath, _
+                        rootPath, _
+                        level, _
+                        findData
+
+                    PulseUI _
+                        "ファイルを走査しています（高速）", _
+                        currentPath, _
+                        mFileCount, _
+                        False
+
+                End If
+
+            End If
+
+            hasItem = _
+                (FindNextFileW( _
+                    hFind, _
+                    findData) <> 0)
+
+        Loop
+
+        lastDllError = Err.LastDllError
+        FindClose hFind
+
+        'ERROR_NO_MORE_FILES(18)は正常終了。
+        If lastDllError <> 0 And _
+           lastDllError <> ERROR_NO_MORE_FILES Then
+
+            AddScanError _
+                "フォルダ列挙（高速）", _
+                currentPath, _
+                lastDllError, _
+                "FindNextFileWで列挙中にエラーが発生しました。Windowsエラー=" & _
+                CStr(lastDllError)
+
+        End If
+
+        'ProcessFileFastが更新した直下ファイル集計を壊さないよう、
+        '列挙終了後に最新のフォルダデータを再取得して
+        'サブフォルダ数だけ反映する。
+        folderData = mFolders(currentPath)
+        folderData(9) = _
+            CLng(folderData(9)) + subFolderCount
+        mFolders(currentPath) = folderData
+
+ContinueLoopFast:
+
+    Loop
+
+    PulseUI _
+        "フォルダ走査が完了しました（高速）", _
+        rootPath, _
+        mFileCount, _
+        True
+
+End Sub
+
+
+'==========================================================
+' 高速版 フォルダレコード作成
+'==========================================================
+Private Sub EnsureFolderRecordFast( _
+    ByVal folderPath As String, _
+    ByVal relativePath As String, _
+    ByVal level As Long)
+
+    Dim data(1 To FOLDER_DATA_COUNT) As Variant
+    Dim parentPath As String
+    Dim levelKey As String
+    Dim bucket As Collection
+
+    If mFolders.Exists(folderPath) Then Exit Sub
+
+    If StrComp( _
+        folderPath, _
+        gScanRoot, _
+        vbTextCompare) = 0 Then
+
+        parentPath = vbNullString
+
+    Else
+
+        parentPath = _
+            GetParentPathFast(folderPath)
+
+    End If
+
+    data(1) = GetFolderNameFast(folderPath)
+    data(2) = folderPath
+    data(3) = relativePath
+    data(4) = level
+    data(5) = 0&
+    data(6) = 0#
+    data(7) = 0&
+    data(8) = 0#
+    data(9) = 0&
+    data(10) = False
+    data(11) = Empty
+    data(12) = parentPath
+    data(13) = 0&
+    data(14) = 0#
+    data(15) = 0&
+    data(16) = 0#
+
+    mFolders.Add folderPath, data
+
+    levelKey = CStr(level)
+
+    If Not mLevelBuckets.Exists(levelKey) Then
+
+        Set bucket = New Collection
+        mLevelBuckets.Add levelKey, bucket
+
+    End If
+
+    Set bucket = mLevelBuckets(levelKey)
+    bucket.Add folderPath
+
+    If level > mMaxFolderLevel Then
+        mMaxFolderLevel = level
+    End If
+
+End Sub
+
+
+'==========================================================
+' 高速版 ファイル処理
+'==========================================================
+Private Sub ProcessFileFast( _
+    ByVal fileName As String, _
+    ByVal parentPath As String, _
+    ByVal rootPath As String, _
+    ByVal folderLevel As Long, _
+    ByRef findData As WIN32_FIND_DATAW)
+
+    Dim extension As String
+    Dim category As String
+    Dim fullPath As String
+    Dim relativePath As String
+    Dim fileSize As Double
+    Dim createdDate As Date
+    Dim modifiedDate As Date
+    Dim daysOld As Long
+    Dim yearsOld As Double
+    Dim oldFlag As String
+    Dim largeFlag As String
+    Dim nameWarning As String
+    Dim pathWarning As String
+    Dim folderData As Variant
+
+    On Error GoTo EH
+
+    fullPath = _
+        CombinePathFast( _
+            parentPath, _
+            fileName)
+
+    extension = _
+        GetExtensionFast(fileName)
+
+    category = _
+        GetFileCategory(extension)
+
+    fileSize = _
+        GetWin32FileSize(findData)
+
+    createdDate = _
+        FileTimeToDateValue( _
+            findData.ftCreationTime)
+
+    modifiedDate = _
+        FileTimeToDateValue( _
+            findData.ftLastWriteTime)
+
+    If modifiedDate > 0 Then
+
+        daysOld = _
+            DateDiff( _
+                "d", _
+                modifiedDate, _
+                Now)
+
+    Else
+
+        daysOld = 0
+
+    End If
+
+    If daysOld < 0 Then daysOld = 0
+
+    yearsOld = daysOld / 365.2425
+
+    relativePath = _
+        GetRelativePath( _
+            fullPath, _
+            rootPath)
+
+    If yearsOld >= gOldYear1 Then
+        oldFlag = "○"
+    Else
+        oldFlag = ""
+    End If
+
+    If fileSize >= _
+       gLargeFileMB * 1048576# Then
+        largeFlag = "○"
+    Else
+        largeFlag = ""
+    End If
+
+    If Len(fileName) >= _
+       gFileNameWarnLength Then
+        nameWarning = "○"
+    Else
+        nameWarning = ""
+    End If
+
+    If Len(fullPath) >= _
+       gPathWarnLength Then
+        pathWarning = "○"
+    Else
+        pathWarning = ""
+    End If
+
+    AddFileRecord _
+        fileName, _
+        extension, _
+        category, _
+        fileSize, _
+        FormatFileSize(fileSize), _
+        createdDate, _
+        modifiedDate, _
+        daysOld, _
+        yearsOld, _
+        parentPath, _
+        folderLevel, _
+        relativePath, _
+        fullPath, _
+        oldFlag, _
+        largeFlag, _
+        nameWarning, _
+        pathWarning
+
+    If mFolders.Exists(parentPath) Then
+
+        folderData = mFolders(parentPath)
+
+        folderData(5) = _
+            CLng(folderData(5)) + 1
+
+        folderData(6) = _
+            CDbl(folderData(6)) + fileSize
+
+        If modifiedDate > 0 Then
+
+            If IsEmpty(folderData(11)) Then
+
+                folderData(11) = modifiedDate
+
+            ElseIf modifiedDate > _
+                   CDate(folderData(11)) Then
+
+                folderData(11) = modifiedDate
+
+            End If
+
+        End If
+
+        mFolders(parentPath) = folderData
+
+    End If
+
+    Exit Sub
+
+EH:
+
+    AddScanError _
+        "ファイル情報取得（高速）", _
+        fullPath, _
+        Err.Number, _
+        Err.Description
+
+End Sub
+
+
+'==========================================================
+' WIN32_FIND_DATAW → Unicodeファイル名
+'==========================================================
+Private Function GetFindFileNameFast( _
+    ByRef findData As WIN32_FIND_DATAW) As String
+
+    Dim i As Long
+    Dim result As String
+
+    For i = 0 To 259
+
+        If findData.cFileName(i) = 0 Then
+            Exit For
+        End If
+
+        result = _
+            result & _
+            ChrW$( _
+                findData.cFileName(i) And &HFFFF&)
+
+    Next i
+
+    GetFindFileNameFast = result
+
+End Function
+
+
+'==========================================================
+' FILETIME → VBA Date（ローカル時刻）
+'==========================================================
+Private Function FileTimeToDateValue( _
+    ByRef sourceTime As FILETIME) As Date
+
+    Dim localTime As FILETIME
+    Dim systemTime As SYSTEMTIME
+
+    If FileTimeToLocalFileTime( _
+        sourceTime, _
+        localTime) = 0 Then Exit Function
+
+    If FileTimeToSystemTime( _
+        localTime, _
+        systemTime) = 0 Then Exit Function
+
+    If systemTime.wYear <= 0 Or _
+       systemTime.wMonth <= 0 Or _
+       systemTime.wDay <= 0 Then Exit Function
+
+    FileTimeToDateValue = _
+        DateSerial( _
+            systemTime.wYear, _
+            systemTime.wMonth, _
+            systemTime.wDay) + _
+        TimeSerial( _
+            systemTime.wHour, _
+            systemTime.wMinute, _
+            systemTime.wSecond)
+
+End Function
+
+
+'==========================================================
+' High/Low DWORD → ファイルサイズ(Byte)
+'==========================================================
+Private Function GetWin32FileSize( _
+    ByRef findData As WIN32_FIND_DATAW) As Double
+
+    Dim highPart As Double
+    Dim lowPart As Double
+
+    If findData.nFileSizeHigh < 0 Then
+        highPart = _
+            CDbl(findData.nFileSizeHigh) + 4294967296#
+    Else
+        highPart = CDbl(findData.nFileSizeHigh)
+    End If
+
+    If findData.nFileSizeLow < 0 Then
+        lowPart = _
+            CDbl(findData.nFileSizeLow) + 4294967296#
+    Else
+        lowPart = CDbl(findData.nFileSizeLow)
+    End If
+
+    GetWin32FileSize = _
+        highPart * 4294967296# + lowPart
+
+End Function
+
+
+Private Function GetExtensionFast( _
+    ByVal fileName As String) As String
+
+    Dim pos As Long
+
+    pos = InStrRev(fileName, ".")
+
+    If pos > 1 And pos < Len(fileName) Then
+        GetExtensionFast = _
+            LCase$(Mid$(fileName, pos + 1))
+    Else
+        GetExtensionFast = vbNullString
+    End If
+
+End Function
+
+
+Private Function CombinePathFast( _
+    ByVal parentPath As String, _
+    ByVal childName As String) As String
+
+    If Right$(parentPath, 1) = "\" Then
+        CombinePathFast = parentPath & childName
+    Else
+        CombinePathFast = parentPath & "\" & childName
+    End If
+
+End Function
+
+
+Private Function GetFolderNameFast( _
+    ByVal folderPath As String) As String
+
+    Dim workPath As String
+    Dim pos As Long
+
+    workPath = RemoveTrailingSlashFast(folderPath)
+    pos = InStrRev(workPath, "\")
+
+    If pos > 0 Then
+        GetFolderNameFast = Mid$(workPath, pos + 1)
+    Else
+        GetFolderNameFast = workPath
+    End If
+
+End Function
+
+
+Private Function GetParentPathFast( _
+    ByVal folderPath As String) As String
+
+    Dim workPath As String
+    Dim pos As Long
+
+    workPath = RemoveTrailingSlashFast(folderPath)
+    pos = InStrRev(workPath, "\")
+
+    If pos <= 0 Then
+        GetParentPathFast = vbNullString
+    ElseIf pos = 3 And Mid$(workPath, 2, 1) = ":" Then
+        GetParentPathFast = Left$(workPath, 3)
+    Else
+        GetParentPathFast = Left$(workPath, pos - 1)
+    End If
+
+End Function
+
+
+Private Function RemoveTrailingSlashFast( _
+    ByVal folderPath As String) As String
+
+    Dim workPath As String
+
+    workPath = folderPath
+
+    Do While Len(workPath) > 3 And _
+             Right$(workPath, 1) = "\"
+
+        workPath = _
+            Left$(workPath, Len(workPath) - 1)
+
+    Loop
+
+    RemoveTrailingSlashFast = workPath
+
+End Function
+
+
+'==========================================================
+' フォルダレコード作成
+'==========================================================
+Private Sub EnsureFolderRecord( _
+    ByVal folderObject As Object, _
+    ByVal relativePath As String, _
+    ByVal level As Long)
+
+    Dim data(1 To FOLDER_DATA_COUNT) As Variant
+
+    Dim parentPath As String
+    Dim levelKey As String
+
+    Dim bucket As Collection
+
+    If mFolders.Exists(folderObject.Path) Then
+        Exit Sub
+    End If
+
+    If StrComp( _
+        folderObject.Path, _
+        gScanRoot, _
+        vbTextCompare) = 0 Then
+
+        parentPath = vbNullString
+
+    Else
+
+        On Error Resume Next
+
+        parentPath = _
+            folderObject.ParentFolder.Path
+
+        On Error GoTo 0
+
+    End If
+
+    data(1) = folderObject.Name
+    data(2) = folderObject.Path
+    data(3) = relativePath
+    data(4) = level
+
+    data(5) = 0&
+    data(6) = 0#
+
+    data(7) = 0&
+    data(8) = 0#
+
+    data(9) = 0&
+    data(10) = False
+
+    data(11) = Empty
+    data(12) = parentPath
+
+    data(13) = 0&
+    data(14) = 0#
+
+    data(15) = 0&
+    data(16) = 0#
+
+    mFolders.Add _
+        folderObject.Path, _
+        data
+
+    '------------------------------------------------------
+    ' 階層別Bucketへ登録
+    '
+    ' 後でソートしなくて済む。
+    '------------------------------------------------------
+    levelKey = CStr(level)
+
+    If Not mLevelBuckets.Exists(levelKey) Then
+
+        Set bucket = New Collection
+
+        mLevelBuckets.Add _
+            levelKey, _
+            bucket
+
+    End If
+
+    Set bucket = _
+        mLevelBuckets(levelKey)
+
+    bucket.Add _
+        CStr(folderObject.Path)
+
+    If level > mMaxFolderLevel Then
+        mMaxFolderLevel = level
+    End If
+
+End Sub
+
+
+'==========================================================
+' ファイル処理
+'==========================================================
+Private Sub ProcessFile( _
+    ByVal fileObject As Object, _
+    ByVal rootPath As String, _
+    ByVal folderLevel As Long)
+
+    Dim fileName As String
+    Dim extension As String
+    Dim category As String
+
+    Dim fullPath As String
+    Dim relativePath As String
+    Dim parentPath As String
+
+    Dim fileSize As Double
+
+    Dim createdDate As Date
+    Dim modifiedDate As Date
+
+    Dim daysOld As Long
+    Dim yearsOld As Double
+
+    Dim oldFlag As String
+    Dim largeFlag As String
+
+    Dim nameWarning As String
+    Dim pathWarning As String
+
+    Dim folderData As Variant
+
+    On Error GoTo EH
+
+    fileName = fileObject.Name
+    fullPath = fileObject.Path
+    parentPath = fileObject.ParentFolder.Path
+
+    extension = _
+        LCase$( _
+            mFSO.GetExtensionName(fileName))
+
+    category = _
+        GetFileCategory(extension)
+
+    fileSize = _
+        CDbl(fileObject.Size)
+
+    createdDate = _
+        fileObject.DateCreated
+
+    modifiedDate = _
+        fileObject.DateLastModified
+
+    daysOld = _
+        DateDiff( _
+            "d", _
+            modifiedDate, _
+            Now)
+
+    If daysOld < 0 Then
+        daysOld = 0
+    End If
+
+    yearsOld = _
+        daysOld / 365.2425
+
+    relativePath = _
+        GetRelativePath( _
+            fullPath, _
+            rootPath)
+
+    If yearsOld >= gOldYear1 Then
+        oldFlag = "○"
+    Else
+        oldFlag = ""
+    End If
+
+    If fileSize >= _
+       gLargeFileMB * 1048576# Then
+
+        largeFlag = "○"
+
+    Else
+
+        largeFlag = ""
+
+    End If
+
+    If Len(fileName) >= _
+       gFileNameWarnLength Then
+
+        nameWarning = "○"
+
+    Else
+
+        nameWarning = ""
+
+    End If
+
+    If Len(fullPath) >= _
+       gPathWarnLength Then
+
+        pathWarning = "○"
+
+    Else
+
+        pathWarning = ""
+
+    End If
+
+    AddFileRecord _
+        fileName, _
+        extension, _
+        category, _
+        fileSize, _
+        FormatFileSize(fileSize), _
+        createdDate, _
+        modifiedDate, _
+        daysOld, _
+        yearsOld, _
+        parentPath, _
+        folderLevel, _
+        relativePath, _
+        fullPath, _
+        oldFlag, _
+        largeFlag, _
+        nameWarning, _
+        pathWarning
+
+    '------------------------------------------------------
+    ' 直下フォルダ情報はスキャン時に集計
+    '------------------------------------------------------
+    If mFolders.Exists(parentPath) Then
+
+        folderData = _
+            mFolders(parentPath)
+
+        folderData(5) = _
+            CLng(folderData(5)) + 1
+
+        folderData(6) = _
+            CDbl(folderData(6)) + fileSize
+
+        If IsEmpty(folderData(11)) Then
+
+            folderData(11) = _
+                modifiedDate
+
+        ElseIf modifiedDate > _
+               CDate(folderData(11)) Then
+
+            folderData(11) = _
+                modifiedDate
+
+        End If
+
+        mFolders(parentPath) = _
+            folderData
+
+    End If
+
+    Exit Sub
+
+
+EH:
+
+    AddScanError _
+        "ファイル情報取得", _
+        SafeFilePath(fileObject), _
+        Err.Number, _
+        Err.Description
+
+End Sub
+
+
+'==========================================================
+' ファイル配列追加
+'==========================================================
+Private Sub AddFileRecord( _
+    ByVal fileName As String, _
+    ByVal extension As String, _
+    ByVal category As String, _
+    ByVal fileSize As Double, _
+    ByVal fileSizeText As String, _
+    ByVal createdDate As Date, _
+    ByVal modifiedDate As Date, _
+    ByVal daysOld As Long, _
+    ByVal yearsOld As Double, _
+    ByVal parentPath As String, _
+    ByVal level As Long, _
+    ByVal relativePath As String, _
+    ByVal fullPath As String, _
+    ByVal oldFlag As String, _
+    ByVal largeFlag As String, _
+    ByVal nameWarning As String, _
+    ByVal pathWarning As String)
+
+    Dim rowNumber As Long
+
+    If mFileCount >= _
+       mFileCapacity Then
+
+        GrowFileArray
+
+    End If
+
+    mFileCount = _
+        mFileCount + 1
+
+    rowNumber = mFileCount
+
+    mFiles(FC_NAME, rowNumber) = fileName
+    mFiles(FC_EXT, rowNumber) = extension
+    mFiles(FC_CATEGORY, rowNumber) = category
+
+    mFiles(FC_SIZE, rowNumber) = fileSize
+    mFiles(FC_SIZE_TEXT, rowNumber) = fileSizeText
+
+    mFiles(FC_CREATED, rowNumber) = createdDate
+    mFiles(FC_MODIFIED, rowNumber) = modifiedDate
+
+    mFiles(FC_DAYS, rowNumber) = daysOld
+    mFiles(FC_YEARS, rowNumber) = yearsOld
+
+    mFiles(FC_PARENT, rowNumber) = parentPath
+    mFiles(FC_LEVEL, rowNumber) = level
+
+    mFiles(FC_RELATIVE, rowNumber) = relativePath
+    mFiles(FC_FULLPATH, rowNumber) = fullPath
+
+    mFiles(FC_OLD, rowNumber) = oldFlag
+    mFiles(FC_LARGE, rowNumber) = largeFlag
+
+    mFiles(FC_NAMEWARN, rowNumber) = nameWarning
+    mFiles(FC_PATHWARN, rowNumber) = pathWarning
+
+    mFiles(FC_DUPLICATE, rowNumber) = ""
+    mFiles(FC_CLEANUP, rowNumber) = ""
+    mFiles(FC_REASON, rowNumber) = ""
+
+End Sub
+
+
+'==========================================================
+' ファイル配列拡張
+'
+' 旧版：
+'   新配列作成
+'   ↓
+'   20列×全ファイルを二重ループコピー
+'
+' 新版：
+'   最終次元だけReDim Preserve
+'
+' 10万件ではかなり効く。
+'==========================================================
+Private Sub GrowFileArray()
+
+    mFileCapacity = _
+        mFileCapacity + FILE_GROW_SIZE
+
+    ReDim Preserve mFiles( _
+        1 To FILE_COLUMN_COUNT, _
+        1 To mFileCapacity)
+
+End Sub
+
+
+'==========================================================
+' 重複検出
+'==========================================================
+Public Sub DetectDuplicateFiles()
+
+    Dim sizeGroups As Object
+    Dim hashGroups As Object
+
+    Dim indexes As Collection
+    Dim hashIndexes As Collection
+
+    Dim i As Long
+    Dim j As Long
+
+    Dim sizeKey As Variant
+    Dim hashKey As Variant
+
+    Dim hashValue As String
+    Dim fileIndex As Long
+    Dim targetPath As String
+
+    Dim candidateCount As Long
+    Dim processedCandidates As Long
+
+    If Not gHashEnabled Then
+
+        PulseUI _
+            "重複検出はOFFです", _
+            "", _
+            mFileCount, _
+            True
+
+        Exit Sub
+
+    End If
+
+    If mFileCount = 0 Then
+        Exit Sub
+    End If
+
+    Set sizeGroups = _
+        CreateObject("Scripting.Dictionary")
+
+    '======================================================
+    ' 第1段階
+    ' 同一サイズグループ
+    '======================================================
+    For i = 1 To mFileCount
+
+        sizeKey = _
+            CStr(mFiles(FC_SIZE, i))
+
+        If Not sizeGroups.Exists(sizeKey) Then
+
+            Set indexes = New Collection
+
+            sizeGroups.Add _
+                sizeKey, _
+                indexes
+
+        End If
+
+        Set indexes = _
+            sizeGroups(sizeKey)
+
+        indexes.Add i
+
+        If i Mod 5000 = 0 Then
+
+            PulseUI _
+                "重複候補を抽出しています", _
+                "", _
+                i, _
+                False
+
+        End If
+
+    Next i
+
+    '候補件数算出
+    For Each sizeKey In sizeGroups.keys
+
+        Set indexes = _
+            sizeGroups(sizeKey)
+
+        If indexes.Count > 1 Then
+
+            candidateCount = _
+                candidateCount + _
+                indexes.Count
+
+        End If
+
+    Next sizeKey
+
+    '======================================================
+    ' 第2段階
+    ' 候補のみSHA-256
+    '======================================================
+    For Each sizeKey In sizeGroups.keys
+
+        Set indexes = _
+            sizeGroups(sizeKey)
+
+        If indexes.Count > 1 Then
+
+            Set hashGroups = _
+                CreateObject("Scripting.Dictionary")
+
+            For j = 1 To indexes.Count
+
+                fileIndex = _
+                    CLng(indexes(j))
+
+                targetPath = _
+                    CStr( _
+                        mFiles( _
+                            FC_FULLPATH, _
+                            fileIndex))
+
+                processedCandidates = _
+                    processedCandidates + 1
+
+                PulseUI _
+                    "SHA-256を計算しています " & _
+                    Format$(processedCandidates, "#,##0") & _
+                    " / " & _
+                    Format$(candidateCount, "#,##0"), _
+                    targetPath, _
+                    processedCandidates, _
+                    False
+
+                hashValue = _
+                    GetSHA256(targetPath)
+
+                If Len(hashValue) > 0 Then
+
+                    If Not hashGroups.Exists( _
+                        hashValue) Then
+
+                        Set hashIndexes = _
+                            New Collection
+
+                        hashGroups.Add _
+                            hashValue, _
+                            hashIndexes
+
+                    End If
+
+                    Set hashIndexes = _
+                        hashGroups(hashValue)
+
+                    hashIndexes.Add _
+                        fileIndex
+
+                End If
+
+            Next j
+
+            '================================================
+            ' 第3段階
+            ' サイズ + SHA-256一致
+            '================================================
+            For Each hashKey In hashGroups.keys
+
+                Set hashIndexes = _
+                    hashGroups(hashKey)
+
+                If hashIndexes.Count > 1 Then
+
+                    For j = 1 To hashIndexes.Count
+
+                        fileIndex = _
+                            CLng(hashIndexes(j))
+
+                        mFiles( _
+                            FC_DUPLICATE, _
+                            fileIndex) = "○"
+
+                    Next j
+
+                End If
+
+            Next hashKey
+
+        End If
+
+    Next sizeKey
+
+    PulseUI _
+        "重複確認が完了しました", _
+        "", _
+        processedCandidates, _
+        True
+
+End Sub
+
+
+'==========================================================
+' SHA-256
+'
+' Windows標準 certutil.exe を使用。
+'==========================================================
+Private Function GetSHA256( _
+    ByVal filePath As String) As String
+
+    Dim shellObject As Object
+    Dim execObject As Object
+
+    Dim command As String
+    Dim outputText As String
+
+    Dim lines() As String
+    Dim line As Variant
+    Dim candidate As String
+
+    Dim lastYield As Double
+
+    On Error GoTo EH
+
+    Set shellObject = _
+        CreateObject("WScript.Shell")
+
+    command = _
+        "certutil.exe -hashfile """ & _
+        Replace( _
+            filePath, _
+            """", _
+            """""") & _
+        """ SHA256"
+
+    Set execObject = _
+        shellObject.Exec(command)
+
+    lastYield = Timer
+
+    Do While execObject.Status = 0
+
+        If SecondsSince(lastYield) >= _
+           UI_UPDATE_INTERVAL Then
+
+            DoEvents
+
+            lastYield = Timer
+
+        End If
+
+    Loop
+
+    outputText = _
+        execObject.StdOut.ReadAll
+
+    If execObject.ExitCode <> 0 Then
+
+        AddScanError _
+            "SHA-256計算", _
+            filePath, _
+            execObject.ExitCode, _
+            execObject.StdErr.ReadAll
+
+        Exit Function
+
+    End If
+
+    lines = _
+        Split( _
+            outputText, _
+            vbCrLf)
+
+    For Each line In lines
+
+        candidate = _
+            Replace( _
+                Trim$(CStr(line)), _
+                " ", _
+                "")
+
+        If Len(candidate) = 64 Then
+
+            If IsHexString(candidate) Then
+
+                GetSHA256 = _
+                    LCase$(candidate)
+
+                Exit Function
+
+            End If
+
+        End If
+
+    Next line
+
+    AddScanError _
+        "SHA-256解析", _
+        filePath, _
+        -1, _
+        "certutilのSHA-256出力を解析できませんでした。"
+
+    Exit Function
+
+
+EH:
+
+    AddScanError _
+        "SHA-256計算", _
+        filePath, _
+        Err.Number, _
+        Err.Description
+
+End Function
+
+
+Private Function IsHexString( _
+    ByVal value As String) As Boolean
+
+    Dim i As Long
+    Dim ch As String
+
+    If Len(value) = 0 Then
+        Exit Function
+    End If
+
+    For i = 1 To Len(value)
+
+        ch = _
+            Mid$(value, i, 1)
+
+        If InStr( _
+            1, _
+            "0123456789abcdefABCDEF", _
+            ch, _
+            vbBinaryCompare) = 0 Then
+
+            Exit Function
+
+        End If
+
+    Next i
+
+    IsHexString = True
+
+End Function
+
+
+'==========================================================
+' 整理候補判定
+'
+' 重要：
+' 下位条件を重複表示しない。
+'
+' 例：
+' 5年以上なら
+' 「5年以上未更新」
+'
+' であり、
+'
+' 「5年以上未更新 / 3年以上未更新」
+'
+' にはしない。
+'==========================================================
+Public Sub FinalizeCleanupCandidates()
+
+    Dim i As Long
+
+    Dim yearsOld As Double
+    Dim reason As String
+
+    Dim isLarge As Boolean
+    Dim isDuplicate As Boolean
+
+    '------------------------------------------------------
+    ' フォルダ側整理候補値を初期化
+    '------------------------------------------------------
+    ResetFolderCleanupValues
+
+    For i = 1 To mFileCount
+
+        reason = vbNullString
+
+        yearsOld = _
+            CDbl( _
+                mFiles( _
+                    FC_YEARS, _
+                    i))
+
+        isLarge = _
+            (CStr( _
+                mFiles( _
+                    FC_LARGE, _
+                    i)) = "○")
+
+        isDuplicate = _
+            (CStr( _
+                mFiles( _
+                    FC_DUPLICATE, _
+                    i)) = "○")
+
+        If yearsOld >= gOldYear3 Then
+
+            AppendReason _
+                reason, _
+                CStr(gOldYear3) & _
+                "年以上未更新"
+
+        ElseIf yearsOld >= gOldYear2 And _
+               isLarge Then
+
+            AppendReason _
+                reason, _
+                CStr(gOldYear2) & _
+                "年以上未更新 / 大容量"
+
+        End If
+
+        If isDuplicate Then
+
+            AppendReason _
+                reason, _
+                "重複ファイル"
+
+        End If
+
+        If Len(reason) > 0 Then
+
+            mFiles( _
+                FC_CLEANUP, _
+                i) = "○"
+
+            mFiles( _
+                FC_REASON, _
+                i) = reason
+
+            AddDirectCleanupToFolder i
+
+        Else
+
+            mFiles( _
+                FC_CLEANUP, _
+                i) = ""
+
+            mFiles( _
+                FC_REASON, _
+                i) = ""
+
+        End If
+
+        If i Mod 1000 = 0 Then
+
+            PulseUI _
+                "整理候補を判定しています", _
+                "", _
+                i, _
+                False
+
+        End If
+
+    Next i
+
+    '------------------------------------------------------
+    ' 配下整理候補集計
+    '
+    ' O(n^2)ソートはしない。
+    ' 階層Bucketを深い順に処理。
+    '------------------------------------------------------
+    PropagateCleanupToParents
+
+    PulseUI _
+        "整理候補判定が完了しました", _
+        "", _
+        mFileCount, _
+        True
+
+End Sub
+
+
+Private Sub AppendReason( _
+    ByRef currentReason As String, _
+    ByVal newReason As String)
+
+    If Len(currentReason) > 0 Then
+
+        currentReason = _
+            currentReason & " / "
+
+    End If
+
+    currentReason = _
+        currentReason & newReason
+
+End Sub
+
+
+Private Sub ResetFolderCleanupValues()
+
+    Dim key As Variant
+    Dim data As Variant
+    Dim processed As Long
+
+    If mFolders Is Nothing Then
+        Exit Sub
+    End If
+
+    For Each key In mFolders.keys
+
+        data = _
+            mFolders(key)
+
+        data(13) = 0&
+        data(14) = 0#
+
+        data(15) = 0&
+        data(16) = 0#
+
+        mFolders(key) = data
+
+        processed = _
+            processed + 1
+
+        If processed Mod 1000 = 0 Then
+
+            PulseUI _
+                "整理候補フォルダを初期化しています", _
+                CStr(key), _
+                processed, _
+                False
+
+        End If
+
+    Next key
+
+End Sub
+
+
+Private Sub AddDirectCleanupToFolder( _
+    ByVal fileIndex As Long)
+
+    Dim parentPath As String
+    Dim fileSize As Double
+
+    Dim data As Variant
+
+    parentPath = _
+        CStr( _
+            mFiles( _
+                FC_PARENT, _
+                fileIndex))
+
+    If Not mFolders.Exists(parentPath) Then
+        Exit Sub
+    End If
+
+    fileSize = _
+        CDbl( _
+            mFiles( _
+                FC_SIZE, _
+                fileIndex))
+
+    data = _
+        mFolders(parentPath)
+
+    data(13) = _
+        CLng(data(13)) + 1
+
+    data(14) = _
+        CDbl(data(14)) + _
+        fileSize
+
+    mFolders(parentPath) = data
+
+End Sub
+
+
+'==========================================================
+' フォルダ基本集計
+'
+' 旧版の最大問題：
+'
+' 全フォルダキーをバブルソートしていた。
+'
+' フォルダ数 n に対して O(n^2)。
+'
+' 新版：
+' 階層Bucketを使用。
+' ソート自体を行わない。
+'==========================================================
+Public Sub FinalizeFolderSummary()
+
+    Dim level As Long
+    Dim levelKey As String
+
+    Dim bucket As Collection
+
+    Dim i As Long
+    Dim processed As Long
+
+    Dim folderPath As String
+    Dim parentPath As String
+
+    Dim data As Variant
+    Dim parentData As Variant
+
+    If mFolders Is Nothing Then
+        Exit Sub
+    End If
+
+    If mFolders.Count = 0 Then
+        Exit Sub
+    End If
+
+    '======================================================
+    ' 直下値 → 総値初期値
+    '======================================================
+    For level = 0 To mMaxFolderLevel
+
+        levelKey = CStr(level)
+
+        If mLevelBuckets.Exists(levelKey) Then
+
+            Set bucket = _
+                mLevelBuckets(levelKey)
+
+            For i = 1 To bucket.Count
+
+                folderPath = _
+                    CStr(bucket(i))
+
+                data = _
+                    mFolders(folderPath)
+
+                data(7) = _
+                    CLng(data(5))
+
+                data(8) = _
+                    CDbl(data(6))
+
+                data(10) = _
+                    (CLng(data(5)) = 0 And _
+                     CLng(data(9)) = 0)
+
+                mFolders(folderPath) = data
+
+                processed = _
+                    processed + 1
+
+                If processed Mod 500 = 0 Then
+
+                    PulseUI _
+                        "フォルダ情報を初期化しています", _
+                        folderPath, _
+                        processed, _
+                        False
+
+                End If
+
+            Next i
+
+        End If
+
+    Next level
+
+
+    '======================================================
+    ' 子 → 親
+    '
+    ' 最大階層から0へ降りるだけ。
+    ' ソート不要。
+    '======================================================
+    processed = 0
+
+    For level = _
+        mMaxFolderLevel To 1 Step -1
+
+        levelKey = CStr(level)
+
+        If mLevelBuckets.Exists(levelKey) Then
+
+            Set bucket = _
+                mLevelBuckets(levelKey)
+
+            For i = 1 To bucket.Count
+
+                folderPath = _
+                    CStr(bucket(i))
+
+                data = _
+                    mFolders(folderPath)
+
+                parentPath = _
+                    CStr(data(12))
+
+                If Len(parentPath) > 0 Then
+
+                    If mFolders.Exists(parentPath) Then
+
+                        parentData = _
+                            mFolders(parentPath)
+
+                        parentData(7) = _
+                            CLng(parentData(7)) + _
+                            CLng(data(7))
+
+                        parentData(8) = _
+                            CDbl(parentData(8)) + _
+                            CDbl(data(8))
+
+                        If Not IsEmpty(data(11)) Then
+
+                            If IsEmpty(parentData(11)) Then
+
+                                parentData(11) = _
+                                    data(11)
+
+                            ElseIf _
+                                CDate(data(11)) > _
+                                CDate(parentData(11)) Then
+
+                                parentData(11) = _
+                                    data(11)
+
+                            End If
+
+                        End If
+
+                        mFolders(parentPath) = _
+                            parentData
+
+                    End If
+
+                End If
+
+                processed = _
+                    processed + 1
+
+                If processed Mod 500 = 0 Then
+
+                    PulseUI _
+                        "フォルダ情報を集計しています", _
+                        folderPath, _
+                        processed, _
+                        False
+
+                End If
+
+            Next i
+
+        End If
+
+    Next level
+
+    PulseUI _
+        "フォルダ情報集計が完了しました", _
+        "", _
+        mFolders.Count, _
+        True
+
+End Sub
+
+
+'==========================================================
+' 整理候補を親へ伝播
+'==========================================================
+Private Sub PropagateCleanupToParents()
+
+    Dim level As Long
+    Dim levelKey As String
+
+    Dim bucket As Collection
+
+    Dim i As Long
+    Dim processed As Long
+
+    Dim folderPath As String
+    Dim parentPath As String
+
+    Dim data As Variant
+    Dim parentData As Variant
+
+    '------------------------------------------------------
+    ' 直下値を配下値へコピー
+    '------------------------------------------------------
+    For level = 0 To mMaxFolderLevel
+
+        levelKey = CStr(level)
+
+        If mLevelBuckets.Exists(levelKey) Then
+
+            Set bucket = _
+                mLevelBuckets(levelKey)
+
+            For i = 1 To bucket.Count
+
+                folderPath = _
+                    CStr(bucket(i))
+
+                data = _
+                    mFolders(folderPath)
+
+                data(15) = _
+                    CLng(data(13))
+
+                data(16) = _
+                    CDbl(data(14))
+
+                mFolders(folderPath) = data
+
+            Next i
+
+        End If
+
+    Next level
+
+
+    '------------------------------------------------------
+    ' 子→親
+    '------------------------------------------------------
+    For level = _
+        mMaxFolderLevel To 1 Step -1
+
+        levelKey = CStr(level)
+
+        If mLevelBuckets.Exists(levelKey) Then
+
+            Set bucket = _
+                mLevelBuckets(levelKey)
+
+            For i = 1 To bucket.Count
+
+                folderPath = _
+                    CStr(bucket(i))
+
+                data = _
+                    mFolders(folderPath)
+
+                parentPath = _
+                    CStr(data(12))
+
+                If Len(parentPath) > 0 Then
+
+                    If mFolders.Exists(parentPath) Then
+
+                        parentData = _
+                            mFolders(parentPath)
+
+                        parentData(15) = _
+                            CLng(parentData(15)) + _
+                            CLng(data(15))
+
+                        parentData(16) = _
+                            CDbl(parentData(16)) + _
+                            CDbl(data(16))
+
+                        mFolders(parentPath) = _
+                            parentData
+
+                    End If
+
+                End If
+
+                processed = _
+                    processed + 1
+
+                If processed Mod 500 = 0 Then
+
+                    PulseUI _
+                        "整理候補フォルダを集計しています", _
+                        folderPath, _
+                        processed, _
+                        False
+
+                End If
+
+            Next i
+
+        End If
+
+    Next level
+
+End Sub
+
+
+'==========================================================
+' UI応答維持
+'
+' 毎ファイルDoEventsすると逆に遅い。
+'
+' そこで
+' ・Timerで時間経過を見る
+' ・約0.25秒ごとだけUserForm更新
+' ・約0.5秒ごとだけStatusBar更新
+' ・そのタイミングでDoEvents
+'
+' とする。
+'==========================================================
+Private Sub PulseUI( _
+    ByVal statusText As String, _
+    ByVal targetPath As String, _
+    ByVal processedCount As Long, _
+    Optional ByVal forceUpdate As Boolean = False)
+
+    Dim nowTimer As Double
+
+    nowTimer = Timer
+
+    If forceUpdate Or _
+       SecondsSince(mLastUiUpdate) >= _
+       UI_UPDATE_INTERVAL Then
+
+        On Error Resume Next
+
+        frmProgress.UpdateProgress _
+            statusText, _
+            targetPath, _
+            processedCount, _
+            gScanStart
+
+        On Error GoTo 0
+
+        mLastUiUpdate = nowTimer
+
+        DoEvents
+
+    End If
+
+    If forceUpdate Or _
+       SecondsSince(mLastStatusUpdate) >= _
+       STATUS_UPDATE_INTERVAL Then
+
+        Application.StatusBar = _
+            statusText & _
+            " : " & _
+            Format$(processedCount, "#,##0")
+
+        mLastStatusUpdate = nowTimer
+
+    End If
+
+End Sub
+
+
+'==========================================================
+' Timer差分
+'
+' Timerは深夜0時で0に戻るため補正。
+'==========================================================
+Private Function SecondsSince( _
+    ByVal previousTimer As Double) As Double
+
+    Dim currentTimer As Double
+
+    currentTimer = Timer
+
+    If currentTimer >= previousTimer Then
+
+        SecondsSince = _
+            currentTimer - previousTimer
+
+    Else
+
+        SecondsSince = _
+            (86400# - previousTimer) + _
+            currentTimer
+
+    End If
+
+End Function
+
+
+'==========================================================
+' エラー情報
+'==========================================================
+Public Sub AddScanError( _
+    ByVal processName As String, _
+    ByVal targetPath As String, _
+    ByVal errorNumber As Long, _
+    ByVal errorDescription As String)
+
+    If mErrorCount >= _
+       mErrorCapacity Then
+
+        GrowErrorArray
+
+    End If
+
+    mErrorCount = _
+        mErrorCount + 1
+
+    mErrors(1, mErrorCount) = Now
+    mErrors(2, mErrorCount) = processName
+    mErrors(3, mErrorCount) = targetPath
+    mErrors(4, mErrorCount) = errorNumber
+    mErrors(5, mErrorCount) = errorDescription
+
+End Sub
+
+
+Private Sub GrowErrorArray()
+
+    mErrorCapacity = _
+        mErrorCapacity + ERROR_GROW_SIZE
+
+    ReDim Preserve mErrors( _
+        1 To ERROR_COLUMN_COUNT, _
+        1 To mErrorCapacity)
+
+End Sub
+
+
+'==========================================================
+' ファイルカテゴリ
+'==========================================================
+Private Function GetFileCategory( _
+    ByVal extension As String) As String
+
+    Select Case LCase$(extension)
+
+        Case "xls", "xlsx", "xlsm", "xlsb", _
+             "xlt", "xltx", "xltm"
+
+            GetFileCategory = "Excel"
+
+        Case "doc", "docx", "docm", _
+             "dot", "dotx", "dotm"
+
+            GetFileCategory = "Word"
+
+        Case "ppt", "pptx", "pptm", _
+             "pps", "ppsx", "ppsm"
+
+            GetFileCategory = "PowerPoint"
+
+        Case "pdf"
+
+            GetFileCategory = "PDF"
+
+        Case "jpg", "jpeg", "png", "gif", _
+             "bmp", "tif", "tiff", "webp", _
+             "svg", "heic"
+
+            GetFileCategory = "画像"
+
+        Case "mp4", "avi", "mov", "wmv", _
+             "mkv", "m4v", "webm"
+
+            GetFileCategory = "動画"
+
+        Case "mp3", "wav", "wma", "aac", _
+             "flac", "m4a", "ogg"
+
+            GetFileCategory = "音声"
+
+        Case "zip", "7z", "rar", "lzh", _
+             "cab", "gz", "tar"
+
+            GetFileCategory = "圧縮ファイル"
+
+        Case "txt", "csv", "log", "xml", _
+             "json", "ini", "md"
+
+            GetFileCategory = "テキスト"
+
+        Case Else
+
+            GetFileCategory = "その他"
+
+    End Select
+
+End Function
+
+
+'==========================================================
+' ファイルサイズ表示
+'==========================================================
+Public Function FormatFileSize( _
+    ByVal bytes As Double) As String
+
+    Const KB As Double = 1024#
+    Const MB As Double = 1048576#
+    Const GB As Double = 1073741824#
+    Const TB As Double = 1099511627776#
+
+    If bytes >= TB Then
+
+        FormatFileSize = _
+            Format$( _
+                bytes / TB, _
+                "#,##0.00") & _
+            " TB"
+
+    ElseIf bytes >= GB Then
+
+        FormatFileSize = _
+            Format$( _
+                bytes / GB, _
+                "#,##0.00") & _
+            " GB"
+
+    ElseIf bytes >= MB Then
+
+        FormatFileSize = _
+            Format$( _
+                bytes / MB, _
+                "#,##0.00") & _
+            " MB"
+
+    ElseIf bytes >= KB Then
+
+        FormatFileSize = _
+            Format$( _
+                bytes / KB, _
+                "#,##0.00") & _
+            " KB"
+
+    Else
+
+        FormatFileSize = _
+            Format$( _
+                bytes, _
+                "#,##0") & _
+            " B"
+
+    End If
+
+End Function
+
+
+'==========================================================
+' 相対パス
+'==========================================================
+Private Function GetRelativePath( _
+    ByVal fullPath As String, _
+    ByVal rootPath As String) As String
+
+    If StrComp( _
+        fullPath, _
+        rootPath, _
+        vbTextCompare) = 0 Then
+
+        GetRelativePath = "."
+
+    ElseIf Len(fullPath) > _
+           Len(rootPath) Then
+
+        GetRelativePath = _
+            Mid$( _
+                fullPath, _
+                Len(rootPath) + 2)
+
+    Else
+
+        GetRelativePath = _
+            fullPath
+
+    End If
+
+End Function
+
+
+'==========================================================
+' フォルダ階層
+'==========================================================
+Private Function GetFolderLevel( _
+    ByVal folderPath As String, _
+    ByVal rootPath As String) As Long
+
+    Dim relativePath As String
+
+    relativePath = _
+        GetRelativePath( _
+            folderPath, _
+            rootPath)
+
+    If relativePath = "." Or _
+       Len(relativePath) = 0 Then
+
+        GetFolderLevel = 0
+
+    Else
+
+        GetFolderLevel = _
+            UBound( _
+                Split( _
+                    relativePath, _
+                    "\")) + 1
+
+    End If
+
+End Function
+
+
+'==========================================================
+' 安全なファイルパス取得
+'==========================================================
+Private Function SafeFilePath( _
+    ByVal fileObject As Object) As String
+
+    On Error Resume Next
+
+    SafeFilePath = _
+        fileObject.Path
+
+    On Error GoTo 0
+
+End Function
+
+
+'==========================================================
+' Output用アクセサ
+'==========================================================
+Public Function GetFileCount() As Long
+
+    GetFileCount = _
+        mFileCount
+
+End Function
+
+
+Public Function GetErrorCount() As Long
+
+    GetErrorCount = _
+        mErrorCount
+
+End Function
+
+
+Public Function GetFolderCount() As Long
+
+    If mFolders Is Nothing Then
+
+        GetFolderCount = 0
+
+    Else
+
+        GetFolderCount = _
+            mFolders.Count
+
+    End If
+
+End Function
+
+
+Public Function GetFileValue( _
+    ByVal columnNumber As Long, _
+    ByVal rowNumber As Long) As Variant
+
+    GetFileValue = _
+        mFiles( _
+            columnNumber, _
+            rowNumber)
+
+End Function
+
+
+Public Function GetErrorValue( _
+    ByVal columnNumber As Long, _
+    ByVal rowNumber As Long) As Variant
+
+    GetErrorValue = _
+        mErrors( _
+            columnNumber, _
+            rowNumber)
+
+End Function
+
+
+Public Function GetFolderDictionary() As Object
+
+    Set GetFolderDictionary = _
+        mFolders
+
+End Function
+
